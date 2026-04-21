@@ -30,6 +30,25 @@ function rowToUser(row) {
     streak:               row.streak,
     lastStudyDate:        row.last_study_date ? new Date(row.last_study_date) : null,
     totalStudyMinutes:    row.total_study_minutes,
+    // ML Feature Fields
+    age:                  row.age,
+    gender:               row.gender,
+    socialMediaHours:     row.social_media_hours,
+    netflixHours:         row.netflix_hours,
+    hasPartTimeJob:       row.has_part_time_job === 1,
+    attendancePercentage: row.attendance_percentage,
+    sleepHours:           row.sleep_hours,
+    dietQuality:          row.diet_quality,
+    exerciseFrequency:    row.exercise_frequency,
+    parentalEducationLevel: row.parental_education_level,
+    internetQuality:      row.internet_quality,
+    mentalHealthRating:   row.mental_health_rating,
+    extraCurricularParticipation: row.extra_curricular_participation === 1,
+    productivityIndex:    row.productivity_index,
+    stressFactor:         row.stress_factor,
+    engagementScore:      row.engagement_score,
+    timeEfficiency:       row.time_efficiency,
+    lifeBalanceScore:     row.life_balance_score,
     createdAt:            row.created_at,
     updatedAt:            row.updated_at,
     // Mongoose compat helpers
@@ -41,14 +60,14 @@ function rowToUser(row) {
 const User = {
   /** Find a user by id (password excluded by default) */
   findById(id, { includePassword = false } = {}) {
-    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,created_at,updated_at';
+    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,age,gender,social_media_hours,netflix_hours,has_part_time_job,attendance_percentage,sleep_hours,diet_quality,exercise_frequency,parental_education_level,internet_quality,mental_health_rating,extra_curricular_participation,productivity_index,stress_factor,engagement_score,time_efficiency,life_balance_score,created_at,updated_at';
     const row = db.prepare(`SELECT ${cols} FROM users WHERE id = ?`).get(Number(id));
     return rowToUser(row);
   },
 
   /** Find a user by arbitrary where object */
   findOne({ email, id } = {}, { includePassword = false } = {}) {
-    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,created_at,updated_at';
+    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,age,gender,social_media_hours,netflix_hours,has_part_time_job,attendance_percentage,sleep_hours,diet_quality,exercise_frequency,parental_education_level,internet_quality,mental_health_rating,extra_curricular_participation,productivity_index,stress_factor,engagement_score,time_efficiency,life_balance_score,created_at,updated_at';
     let row;
     if (email !== undefined) {
       row = db.prepare(`SELECT ${cols} FROM users WHERE email = ?`).get(String(email).toLowerCase());
@@ -90,6 +109,25 @@ const User = {
       lastStudyDate:      'last_study_date',
       totalStudyMinutes:  'total_study_minutes',
       password:           'password',
+      // ML Feature Fields
+      age:                'age',
+      gender:             'gender',
+      socialMediaHours:   'social_media_hours',
+      netflixHours:       'netflix_hours',
+      hasPartTimeJob:     'has_part_time_job',
+      attendancePercentage: 'attendance_percentage',
+      sleepHours:         'sleep_hours',
+      dietQuality:        'diet_quality',
+      exerciseFrequency:  'exercise_frequency',
+      parentalEducationLevel: 'parental_education_level',
+      internetQuality:    'internet_quality',
+      mentalHealthRating: 'mental_health_rating',
+      extraCurricularParticipation: 'extra_curricular_participation',
+      productivityIndex:  'productivity_index',
+      stressFactor:       'stress_factor',
+      engagementScore:    'engagement_score',
+      timeEfficiency:     'time_efficiency',
+      lifeBalanceScore:   'life_balance_score',
     };
 
     const setClauses = [];

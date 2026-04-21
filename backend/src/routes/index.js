@@ -8,6 +8,7 @@ const scheduleRoutes = require('./schedule');
 const analyticsRoutes = require('./analytics');
 const focusSessionRoutes = require('./focusSessions');
 const profileRoutes = require('./profile');
+const mlRoutes = require('./ml');
 
 router.use('/auth', authRoutes);
 router.use('/tasks', taskRoutes);
@@ -16,5 +17,6 @@ router.use('/schedule', scheduleRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/focus-sessions', focusSessionRoutes);
 router.use('/profile', profileRoutes);
+router.use('/ml', mlRoutes);
 
 module.exports = router;

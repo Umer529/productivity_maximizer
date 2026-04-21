@@ -59,8 +59,10 @@ app.use('/api/v1', routes);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-  console.log(`FocusFlow API running on port ${PORT} [SQLite]`);
+const HOST = process.env.HOST || '0.0.0.0';
+const server = app.listen(PORT, HOST, () => {
+  console.log(`FocusFlow API running on http://${HOST}:${PORT} [SQLite]`);
+  console.log(`For mobile devices, use your PC's local IP address instead of ${HOST}`);
 });
 
 process.on('unhandledRejection', (err) => {

@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../contexts/AuthContext';
-import { scheduleService, ScheduleSlot } from '../services/scheduleService';
+import { scheduleService, ScheduleSlot, ScheduleData } from '../services/scheduleService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -41,20 +41,21 @@ export default function SchedulerScreen() {
   const weekDates = getWeekDates();
   const todayIndex = (new Date().getDay() + 6) % 7;
   const [selectedDay, setSelectedDay] = useState(todayIndex);
-  const [slots, setSlots] = useState<ScheduleSlot[]>([]);
+  const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
 
   const selectedDate = weekDates[selectedDay];
   const dateStr = selectedDate.toISOString().split('T')[0];
+  const slots = scheduleData?.slots || [];
 
   const loadSchedule = useCallback(async (date: string) => {
     setLoading(true);
     try {
-      const res = await scheduleService.getSchedule(date);
-      setSlots(res.data || []);
+      const res = await scheduleService.getSchedule(date, 'ml');
+      setScheduleData(res.data);
     } catch {
-      setSlots([]);
+      setScheduleData(null);
     } finally {
       setLoading(false);
     }
@@ -63,8 +64,8 @@ export default function SchedulerScreen() {
   const handleRegenerate = async () => {
     setRegenerating(true);
     try {
-      const res = await scheduleService.regenerate(dateStr);
-      setSlots(res.data || []);
+      const res = await scheduleService.regenerate(dateStr, 'ml');
+      setScheduleData(res.data);
     } catch {
       // keep existing
     } finally {
@@ -101,7 +102,9 @@ export default function SchedulerScreen() {
           <View style={styles.aiBannerLeft}>
             <Ionicons name="sparkles" size={14} color={colors.primaryLight} />
             <Text style={styles.aiBannerText}>
-              {user
+              {scheduleData?.method === 'ml-optimized'
+                ? `AI-generated schedule • Productivity: ${scheduleData.student_productivity?.toFixed(0) || 'N/A'}/100`
+                : user
                 ? 'Schedule optimized for your peak focus hours'
                 : 'Sign in to get a personalized AI schedule'}
             </Text>
@@ -117,7 +120,7 @@ export default function SchedulerScreen() {
               ) : (
                 <>
                   <Ionicons name="refresh" size={12} color={colors.primaryLight} />
-                  <Text style={styles.regenBtnText}>Regenerate</Text>
+                  <Text style={styles.regenBtnText}>Regenerate AI</Text>
                 </>
               )}
             </TouchableOpacity>

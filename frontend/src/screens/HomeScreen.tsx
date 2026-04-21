@@ -15,7 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
 import { taskService, Task } from '../services/taskService';
-import { analyticsService } from '../services/analyticsService';
+import { analyticsService, MLPredictions } from '../services/analyticsService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -42,6 +42,7 @@ export default function HomeScreen() {
   const [totalMinutes, setTotalMinutes] = useState(0);
   const [weeklyHours, setWeeklyHours] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [mlPredictions, setMlPredictions] = useState<MLPredictions | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -57,8 +58,12 @@ export default function HomeScreen() {
       setFocusScore(overviewRes.data.focusScore);
       setTotalMinutes(overviewRes.data.totalFocusMinutes);
       setWeeklyHours(overviewRes.data.weeklyHours ?? []);
+      setMlPredictions(overviewRes.data.mlPredictions || null);
+      
+      // Prioritize ML-based insights, fall back to tips
+      const mlInsight = insightsRes.data.find((i) => i.text.includes('ML Prediction') || i.text.includes('ML Recommendation'));
       const tip = insightsRes.data.find((i) => i.type === 'tip');
-      if (tip) setAiSuggestion(tip.text);
+      setAiSuggestion(mlInsight?.text || tip?.text || null);
     } catch {
       // silent
     }
@@ -83,6 +88,10 @@ export default function HomeScreen() {
       ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`
       : `${totalMinutes}m`;
   const maxH = Math.max(...weeklyHours, 1);
+  
+  // Use ML productivity score if available, otherwise use focus score
+  const productivityScore = mlPredictions?.productivity_score?.value ?? focusScore;
+  const recommendedHours = mlPredictions?.required_hours?.value ?? 6;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -123,11 +132,23 @@ export default function HomeScreen() {
         <View style={styles.scoreCard}>
           <View style={styles.scoreTop}>
             <View>
-              <Text style={styles.scoreLabel}>TODAY'S FOCUS SCORE</Text>
-              <Text style={styles.scoreValue}>{focusScore}%</Text>
+              <View style={styles.scoreLabelRow}>
+                <Text style={styles.scoreLabel}>
+                  {mlPredictions ? 'AI PRODUCTIVITY SCORE' : 'TODAY\'S FOCUS SCORE'}
+                </Text>
+                {mlPredictions && (
+                  <View style={styles.aiBadge}>
+                    <Ionicons name="sparkles" size={10} color={colors.white} />
+                  </View>
+                )}
+              </View>
+              <Text style={styles.scoreValue}>{productivityScore.toFixed(0)}%</Text>
+              {mlPredictions && (
+                <Text style={styles.scoreSub}>Recommended: {recommendedHours.toFixed(1)}h/day</Text>
+              )}
             </View>
             <View style={styles.scoreIconRing}>
-              <Ionicons name="flash" size={26} color={colors.primaryLight} />
+              <Ionicons name={mlPredictions ? "hardware-chip" : "flash"} size={26} color={colors.primaryLight} />
             </View>
           </View>
           <View style={styles.scoreDivider} />
@@ -452,14 +473,30 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: spacing.lg,
   },
+  scoreLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
   scoreLabel: {
     fontSize: typography.xs,
     color: colors.mutedForeground,
     letterSpacing: 1,
     fontWeight: '600',
-    marginBottom: spacing.xs,
+  },
+  aiBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
   },
   scoreValue: { fontSize: 44, fontWeight: '800', color: colors.primaryLight, letterSpacing: -2 },
+  scoreSub: {
+    fontSize: typography.xs,
+    color: colors.mutedForeground,
+    marginTop: spacing.xs,
+  },
   scoreIconRing: {
     width: 52,
     height: 52,

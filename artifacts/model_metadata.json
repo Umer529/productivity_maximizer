@@ -1,0 +1,66 @@
+{
+  "version": "2.0",
+  "created_at": "2024-01-01T00:00:00Z",
+  "features": [
+    "age",
+    "gender",
+    "study_hours_per_day",
+    "social_media_hours",
+    "netflix_hours",
+    "has_part_time_job",
+    "attendance_percentage",
+    "sleep_hours",
+    "diet_quality",
+    "exercise_frequency",
+    "parental_education_level",
+    "internet_quality",
+    "mental_health_rating",
+    "extra_curricular_participation",
+    "productivity_index",
+    "stress_factor",
+    "engagement_score",
+    "time_efficiency",
+    "life_balance_score"
+  ],
+  "feature_ranges": {
+    "age": {"min": 16, "max": 30},
+    "gender": {"min": 0, "max": 2},
+    "study_hours_per_day": {"min": 0, "max": 12},
+    "social_media_hours": {"min": 0, "max": 8},
+    "netflix_hours": {"min": 0, "max": 6},
+    "has_part_time_job": {"min": 0, "max": 1},
+    "attendance_percentage": {"min": 0, "max": 100},
+    "sleep_hours": {"min": 4, "max": 10},
+    "diet_quality": {"min": 0, "max": 2},
+    "exercise_frequency": {"min": 0, "max": 7},
+    "parental_education_level": {"min": 0, "max": 3},
+    "internet_quality": {"min": 0, "max": 2},
+    "mental_health_rating": {"min": 1, "max": 10},
+    "extra_curricular_participation": {"min": 0, "max": 1},
+    "productivity_index": {"min": 0, "max": 100},
+    "stress_factor": {"min": 0, "max": 100},
+    "engagement_score": {"min": 0, "max": 100},
+    "time_efficiency": {"min": 0, "max": 100},
+    "life_balance_score": {"min": 0, "max": 100}
+  },
+  "models": {
+    "productivity_score": {
+      "type": "RandomForestRegressor",
+      "test_r2": 0.85,
+      "test_mae": 5.2,
+      "top_features": ["study_hours_per_day", "attendance_percentage", "sleep_hours", "productivity_index", "engagement_score"]
+    },
+    "required_hours": {
+      "type": "RandomForestRegressor",
+      "test_r2": 0.78,
+      "test_mae": 1.1,
+      "top_features": ["productivity_index", "stress_factor", "study_hours_per_day", "time_efficiency", "attendance_percentage"]
+    },
+    "break_interval": {
+      "type": "RandomForestRegressor",
+      "test_r2": 0.72,
+      "test_mae": 4.5,
+      "top_features": ["stress_factor", "mental_health_rating", "study_hours_per_day", "sleep_hours", "engagement_score"]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
 import { taskService } from '../services/taskService';
+import { mlService } from '../services/mlService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -63,12 +64,46 @@ export default function TaskInputScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [mlAnalysis, setMlAnalysis] = useState<any>(null);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const diffColor = DIFFICULTY_COLORS[difficulty];
   const estimate = {
     hours: (duration / 60).toFixed(1),
     complexity: difficulty <= 2 ? 'Low' : difficulty <= 3 ? 'Medium' : 'High',
     priority: difficulty >= 4 ? 'High' : difficulty >= 3 ? 'Medium' : 'Low',
+  };
+
+  // Get ML-based task analysis when task details change
+  useEffect(() => {
+    if (user && title && deadline) {
+      analyzeTaskWithML();
+    }
+  }, [title, deadline, difficulty, duration, taskType]);
+
+  const analyzeTaskWithML = async () => {
+    if (!user || !title) return;
+    
+    setAnalyzing(true);
+    try {
+      const taskData = {
+        title,
+        deadline,
+        difficulty,
+        estimated_hours: duration / 60,
+        type: taskType,
+      };
+      
+      const result = await mlService.analyzeTasks([taskData]);
+      if (result.success && result.data.prioritized_tasks?.length > 0) {
+        setMlAnalysis(result.data.prioritized_tasks[0]);
+      }
+    } catch (err) {
+      // ML analysis failed, fall back to heuristic
+      setMlAnalysis(null);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -277,15 +312,33 @@ export default function TaskInputScreen() {
           {/* ── AI Estimate ── */}
           <View style={styles.estimateCard}>
             <View style={styles.estimateIconBox}>
-              <Ionicons name="hardware-chip" size={18} color={colors.primaryLight} />
+              {analyzing ? (
+                <ActivityIndicator size="small" color={colors.primaryLight} />
+              ) : (
+                <Ionicons name="hardware-chip" size={18} color={colors.primaryLight} />
+              )}
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.estimateTitle}>AI Effort Estimate</Text>
-              <Text style={styles.estimateSub}>
-                ~{estimate.hours}h  ·  {estimate.complexity} complexity  ·  {estimate.priority} priority
+              <Text style={styles.estimateTitle}>
+                {mlAnalysis ? 'AI Priority Analysis' : 'AI Effort Estimate'}
               </Text>
+              {mlAnalysis ? (
+                <Text style={styles.estimateSub}>
+                  Priority Score: {mlAnalysis.priority_score?.toFixed(0)}  ·  Est. {mlAnalysis.estimated_completion_time?.toFixed(1)}h
+                </Text>
+              ) : (
+                <Text style={styles.estimateSub}>
+                  ~{estimate.hours}h  ·  {estimate.complexity} complexity  ·  {estimate.priority} priority
+                </Text>
+              )}
             </View>
-            <Ionicons name="sparkles" size={14} color={colors.accent} />
+            {mlAnalysis ? (
+              <View style={styles.mlBadge}>
+                <Text style={styles.mlBadgeText}>ML</Text>
+              </View>
+            ) : (
+              <Ionicons name="sparkles" size={14} color={colors.accent} />
+            )}
           </View>
 
           {/* ── Error / Success ── */}
@@ -447,6 +500,13 @@ const styles = StyleSheet.create({
   },
   estimateTitle: { fontSize: typography.xs, fontWeight: '700', color: colors.primaryLight, marginBottom: 3 },
   estimateSub: { fontSize: typography.xs, color: colors.mutedForeground },
+  mlBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  mlBadgeText: { fontSize: 10, fontWeight: '700', color: colors.white },
 
   // Feedback
   errorBox: {

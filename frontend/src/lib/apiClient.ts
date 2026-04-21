@@ -3,7 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Change this to your backend URL when running on a real device
 // For Android emulator: http://10.0.2.2:5000/api/v1
 // For iOS simulator / Expo Go on same machine: http://localhost:5000/api/v1
-const BASE_URL = 'http://192.168.0.119:5000/api/v1';
+// For Expo Go on mobile device on same network: http://YOUR_PC_IP:5000/api/v1
+const BASE_URL = 'http://192.168.0.113:5000/api/v1';
 const TOKEN_KEY = 'focusflow_token';
 
 let _tokenCache: string | null = null;

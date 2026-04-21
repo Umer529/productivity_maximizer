@@ -1,9 +1,10 @@
 const FocusSession = require('../models/FocusSession');
 const Task         = require('../models/Task');
 const aiScheduler  = require('../services/aiSchedulerService');
+const mlScheduler  = require('../services/mlScheduler');
 
 // GET /api/v1/analytics/overview
-exports.getOverview = (req, res, next) => {
+exports.getOverview = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
@@ -55,9 +56,26 @@ exports.getOverview = (req, res, next) => {
       ? Math.round((recentCompleted.length / allWeekSessions.length) * 100)
       : 0;
 
+    // Get ML predictions for productivity insights
+    let mlPredictions = null;
+    try {
+      mlPredictions = await mlScheduler.getProductivityPredictions(req.user);
+    } catch (mlError) {
+      console.error('ML predictions failed:', mlError.message);
+    }
+
     res.status(200).json({
       success: true,
-      data: { focusScore, totalFocusMinutes, streak: req.user.streak, tasksCompleted, tasksPending, weeklyHours, subjectBreakdown },
+      data: { 
+        focusScore, 
+        totalFocusMinutes, 
+        streak: req.user.streak, 
+        tasksCompleted, 
+        tasksPending, 
+        weeklyHours, 
+        subjectBreakdown,
+        mlPredictions 
+      },
     });
   } catch (err) {
     next(err);
@@ -65,11 +83,49 @@ exports.getOverview = (req, res, next) => {
 };
 
 // GET /api/v1/analytics/insights
-exports.getInsights = (req, res, next) => {
+exports.getInsights = async (req, res, next) => {
   try {
     const sessions = FocusSession.find({ userId: req.user.id }, { limit: 100 });
     const tasks    = Task.find({ userId: req.user.id });
     const insights = aiScheduler.getAIInsights(req.user, sessions, tasks);
+    
+    // Add ML-based insights
+    try {
+      const mlPredictions = await mlScheduler.getProductivityPredictions(req.user);
+      
+      // Add burnout risk insight
+      const avgHoursPerDay = (mlPredictions.required_hours?.value || 6);
+      if (avgHoursPerDay > 10) {
+        insights.push({
+          type: 'warning',
+          text: `ML Prediction: High burnout risk. Recommended study hours: ${mlPredictions.required_hours?.value?.toFixed(1)}h/day. Consider reducing workload.`
+        });
+      }
+      
+      // Add productivity insight
+      const prodScore = mlPredictions.productivity_score?.value || 50;
+      if (prodScore < 40) {
+        insights.push({
+          type: 'prediction',
+          text: `ML Prediction: Current productivity score is ${prodScore.toFixed(0)}/100. Focus on improving sleep and reducing distractions.`
+        });
+      } else if (prodScore >= 80) {
+        insights.push({
+          type: 'tip',
+          text: `ML Prediction: Excellent productivity (${prodScore.toFixed(0)}/100). Maintain your current study habits!`
+        });
+      }
+      
+      // Add break interval insight
+      const breakInterval = mlPredictions.break_interval?.value || 25;
+      insights.push({
+        type: 'tip',
+        text: `ML Recommendation: Optimal break interval is ${breakInterval.toFixed(0)} minutes based on your stress levels.`
+      });
+    } catch (mlError) {
+      console.error('ML insights failed:', mlError.message);
+    }
+    
     res.status(200).json({ success: true, data: insights });
   } catch (err) {
     next(err);

@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
-import { analyticsService, AnalyticsOverview, AIInsight } from '../services/analyticsService';
+import { analyticsService, AIInsight, MLPredictions, AnalyticsOverview } from '../services/analyticsService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -190,6 +191,44 @@ export default function AnalyticsScreen() {
               </View>
             )}
 
+            {/* ── ML Predictions ── */}
+            {overview?.mlPredictions && (
+              <View style={styles.card}>
+                <View style={styles.insightsHeader}>
+                  <View style={styles.insightsTitleRow}>
+                    <Ionicons name="hardware-chip" size={16} color={colors.primaryLight} />
+                    <Text style={styles.cardTitle}>ML Predictions</Text>
+                  </View>
+                  <View style={styles.aiBadge}>
+                    <Text style={styles.aiBadgeText}>ML</Text>
+                  </View>
+                </View>
+                <View style={styles.mlPredictionsGrid}>
+                  <MLPredictionCard
+                    icon="flash"
+                    label="Productivity Score"
+                    value={overview.mlPredictions.productivity_score?.value.toFixed(0) || 'N/A'}
+                    sub={`Confidence: ${overview.mlPredictions.productivity_score?.confidence.toFixed(0)}%`}
+                    color={colors.primaryLight}
+                  />
+                  <MLPredictionCard
+                    icon="time"
+                    label="Recommended Hours"
+                    value={`${overview.mlPredictions.required_hours?.value.toFixed(1)}h/day`}
+                    sub={`Confidence: ${overview.mlPredictions.required_hours?.confidence.toFixed(0)}%`}
+                    color={colors.success}
+                  />
+                  <MLPredictionCard
+                    icon="cafe"
+                    label="Optimal Break"
+                    value={`${overview.mlPredictions.break_interval?.value.toFixed(0)}min`}
+                    sub={`Confidence: ${overview.mlPredictions.break_interval?.confidence.toFixed(0)}%`}
+                    color={colors.accent}
+                  />
+                </View>
+              </View>
+            )}
+
             {/* ── AI Insights ── */}
             <View style={styles.card}>
               <View style={styles.insightsHeader}>
@@ -261,6 +300,31 @@ function InsightCard({ insight }: { insight: AIInsight }) {
         <Ionicons name={c.icon} size={14} color={c.color} />
       </View>
       <Text style={[insightStyles.text, { color: c.color }]}>{insight.text}</Text>
+    </View>
+  );
+}
+
+function MLPredictionCard({
+  icon,
+  label,
+  value,
+  sub,
+  color,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  sub: string;
+  color: string;
+}) {
+  return (
+    <View style={[mlPredictionStyles.card, { borderColor: color + '30' }]}>
+      <View style={[mlPredictionStyles.iconBox, { backgroundColor: color + '18' }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <Text style={mlPredictionStyles.label}>{label}</Text>
+      <Text style={[mlPredictionStyles.value, { color }]}>{value}</Text>
+      <Text style={mlPredictionStyles.sub}>{sub}</Text>
     </View>
   );
 }
@@ -402,6 +466,7 @@ const styles = StyleSheet.create({
   insightsEmpty: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   emptyText: { fontSize: typography.sm, color: colors.mutedForeground, textAlign: 'center', lineHeight: 20 },
   insightsList: { gap: spacing.sm },
+  mlPredictionsGrid: { flexDirection: 'row', gap: spacing.sm },
 });
 
 const statStyles = StyleSheet.create({
@@ -444,4 +509,26 @@ const insightStyles = StyleSheet.create({
     flexShrink: 0,
   },
   text: { flex: 1, fontSize: typography.sm, lineHeight: 20, fontWeight: '500' },
+});
+
+const mlPredictionStyles = StyleSheet.create({
+  card: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: { fontSize: typography.xs, color: colors.mutedForeground, fontWeight: '600' },
+  value: { fontSize: typography.lg, fontWeight: '800', letterSpacing: -0.5 },
+  sub: { fontSize: 10, color: colors.mutedForeground },
 });

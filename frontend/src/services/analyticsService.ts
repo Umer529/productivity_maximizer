@@ -1,5 +1,20 @@
 import { api } from '../lib/apiClient';
 
+export interface MLPredictions {
+  productivity_score: {
+    value: number;
+    confidence: number;
+  };
+  required_hours: {
+    value: number;
+    confidence: number;
+  };
+  break_interval: {
+    value: number;
+    confidence: number;
+  };
+}
+
 export interface AnalyticsOverview {
   focusScore: number;
   totalFocusMinutes: number;
@@ -8,6 +23,7 @@ export interface AnalyticsOverview {
   tasksPending: number;
   weeklyHours: number[];
   subjectBreakdown: { name: string; hours: number; pct: number }[];
+  mlPredictions?: MLPredictions;
 }
 
 export interface AIInsight {
