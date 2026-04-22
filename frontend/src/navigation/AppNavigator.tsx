@@ -16,6 +16,7 @@ import FocusScreen from '../screens/FocusScreen';
 import SchedulerScreen from '../screens/SchedulerScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import TaskInputScreen from '../screens/TaskInputScreen';
 
 export type RootStackParamList = {
@@ -24,6 +25,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   TaskInput: undefined;
   Focus: undefined;
+  ProfileSettings: undefined;
 };
 
 export type TabParamList = {
@@ -128,6 +130,11 @@ export default function AppNavigator() {
                 name="Focus"
                 component={FocusScreen}
                 options={{ presentation: 'fullScreenModal' }}
+              />
+              <Stack.Screen
+                name="ProfileSettings"
+                component={ProfileSettingsScreen}
+                options={{ presentation: 'modal' }}
               />
             </>
           )}

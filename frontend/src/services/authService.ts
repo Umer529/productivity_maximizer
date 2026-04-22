@@ -22,6 +22,25 @@ export interface AuthUser {
   streak: number;
   totalStudyMinutes: number;
   preferences: UserPreferences;
+  // ML Feature Fields
+  age?: number;
+  gender?: string;
+  socialMediaHours?: number;
+  netflixHours?: number;
+  hasPartTimeJob?: boolean;
+  attendancePercentage?: number;
+  sleepHours?: number;
+  dietQuality?: string;
+  exerciseFrequency?: number;
+  parentalEducationLevel?: string;
+  internetQuality?: string;
+  mentalHealthRating?: number;
+  extraCurricularParticipation?: boolean;
+  productivityIndex?: number;
+  stressFactor?: number;
+  engagementScore?: number;
+  timeEfficiency?: number;
+  lifeBalanceScore?: number;
 }
 
 interface AuthResponse {

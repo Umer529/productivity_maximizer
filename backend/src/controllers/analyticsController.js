@@ -92,16 +92,44 @@ exports.getInsights = async (req, res, next) => {
     // Add ML-based insights
     try {
       const mlPredictions = await mlScheduler.getProductivityPredictions(req.user);
-      
+
       // Add burnout risk insight
-      const avgHoursPerDay = (mlPredictions.required_hours?.value || 6);
-      if (avgHoursPerDay > 10) {
-        insights.push({
-          type: 'warning',
-          text: `ML Prediction: High burnout risk. Recommended study hours: ${mlPredictions.required_hours?.value?.toFixed(1)}h/day. Consider reducing workload.`
-        });
+      const burnoutRisk = mlPredictions.burnout_risk;
+      if (burnoutRisk) {
+        if (burnoutRisk.level === 'critical') {
+          insights.push({
+            type: 'warning',
+            text: `ML Prediction: CRITICAL burnout risk (${burnoutRisk.score}/100). Take immediate action: reduce study hours, improve sleep, and take breaks.`
+          });
+        } else if (burnoutRisk.level === 'high') {
+          insights.push({
+            type: 'warning',
+            text: `ML Prediction: High burnout risk (${burnoutRisk.score}/100). Consider reducing workload and prioritizing self-care.`
+          });
+        } else if (burnoutRisk.level === 'moderate') {
+          insights.push({
+            type: 'tip',
+            text: `ML Prediction: Moderate burnout risk (${burnoutRisk.score}/100). Monitor your stress levels and ensure adequate rest.`
+          });
+        }
       }
-      
+
+      // Add burnout factor insights
+      if (burnoutRisk?.factors) {
+        if (burnoutRisk.factors.stress > 25) {
+          insights.push({
+            type: 'tip',
+            text: `ML Insight: High stress detected. Consider mindfulness exercises or reducing non-essential commitments.`
+          });
+        }
+        if (burnoutRisk.factors.sleep > 7) {
+          insights.push({
+            type: 'tip',
+            text: `ML Insight: Sleep patterns need improvement. Aim for 7-8 hours of quality sleep for better productivity.`
+          });
+        }
+      }
+
       // Add productivity insight
       const prodScore = mlPredictions.productivity_score?.value || 50;
       if (prodScore < 40) {
@@ -115,7 +143,7 @@ exports.getInsights = async (req, res, next) => {
           text: `ML Prediction: Excellent productivity (${prodScore.toFixed(0)}/100). Maintain your current study habits!`
         });
       }
-      
+
       // Add break interval insight
       const breakInterval = mlPredictions.break_interval?.value || 25;
       insights.push({

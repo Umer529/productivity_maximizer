@@ -15,6 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
 import { focusSessionService, FocusSession } from '../services/focusSessionService';
+import { taskService, Task } from '../services/taskService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -45,6 +46,9 @@ export default function FocusScreen() {
   const [sessionType, setSessionType] = useState<'study' | 'revision' | 'break'>('study');
   const [activeAmbient, setActiveAmbient] = useState<string | null>(null);
   const [completedSessions, setCompletedSessions] = useState(0);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showTaskPicker, setShowTaskPicker] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -59,6 +63,11 @@ export default function FocusScreen() {
           setIsRunning(true);
         }
       })
+      .catch(() => {});
+
+    // Load pending tasks
+    taskService.getTasks({ status: 'pending' })
+      .then((res) => setTasks(res.data.slice(0, 5)))
       .catch(() => {});
   }, [user]);
 
@@ -280,6 +289,62 @@ export default function FocusScreen() {
             active={isRunning}
             activeColor={colors.accent}
           />
+        </View>
+
+        {/* ── Active Task ── */}
+        <View style={styles.taskCard}>
+          <View style={styles.taskHeader}>
+            <Text style={styles.taskTitle}>Active Task</Text>
+            <TouchableOpacity
+              style={styles.changeTaskBtn}
+              onPress={() => setShowTaskPicker(!showTaskPicker)}
+            >
+              <Ionicons name="swap-horizontal" size={14} color={colors.primaryLight} />
+              <Text style={styles.changeTaskText}>Change</Text>
+            </TouchableOpacity>
+          </View>
+          {selectedTask ? (
+            <View style={styles.taskInfo}>
+              <View style={styles.taskTypeBadge}>
+                <Text style={styles.taskTypeText}>{selectedTask.type}</Text>
+              </View>
+              <Text style={styles.taskName}>{selectedTask.title}</Text>
+              <Text style={styles.taskMeta}>
+                {selectedTask.course && `${selectedTask.course} • `}
+                Due: {new Date(selectedTask.deadline).toLocaleDateString()}
+              </Text>
+            </View>
+          ) : showTaskPicker ? (
+            <View style={styles.taskPicker}>
+              {tasks.length === 0 ? (
+                <Text style={styles.noTasksText}>No pending tasks</Text>
+              ) : (
+                tasks.map((task) => (
+                  <TouchableOpacity
+                    key={task._id}
+                    style={styles.taskOption}
+                    onPress={() => {
+                      setSelectedTask(task);
+                      setShowTaskPicker(false);
+                    }}
+                  >
+                    <Text style={styles.taskOptionTitle}>{task.title}</Text>
+                    <Text style={styles.taskOptionMeta}>
+                      {task.course} • {task.difficulty}/5
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.selectTaskBtn}
+              onPress={() => setShowTaskPicker(true)}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={colors.primaryLight} />
+              <Text style={styles.selectTaskText}>Select a task to focus on</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Ambient Sounds ── */}
@@ -528,6 +593,61 @@ const styles = StyleSheet.create({
     borderColor: colors.warning + '30',
   },
   tipText: { flex: 1, fontSize: typography.xs, color: colors.subtext, lineHeight: 18 },
+
+  // Task Card
+  taskCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    gap: spacing.md,
+  },
+  taskHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  taskTitle: { fontSize: typography.sm, fontWeight: '700', color: colors.foreground },
+  changeTaskBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  changeTaskText: { fontSize: typography.xs, color: colors.primaryLight, fontWeight: '600' },
+  taskInfo: { gap: spacing.sm },
+  taskTypeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primaryDim,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  taskTypeText: { fontSize: 10, color: colors.primaryLight, fontWeight: '700' },
+  taskName: { fontSize: typography.base, fontWeight: '600', color: colors.foreground },
+  taskMeta: { fontSize: typography.xs, color: colors.mutedForeground },
+  taskPicker: { gap: spacing.sm },
+  noTasksText: { fontSize: typography.sm, color: colors.mutedForeground, textAlign: 'center', paddingVertical: spacing.md },
+  taskOption: {
+    backgroundColor: colors.muted,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  taskOptionTitle: { fontSize: typography.sm, fontWeight: '600', color: colors.foreground },
+  taskOptionMeta: { fontSize: typography.xs, color: colors.mutedForeground },
+  selectTaskBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+    borderRadius: radius.md,
+    borderStyle: 'dashed',
+  },
+  selectTaskText: { fontSize: typography.sm, color: colors.primaryLight, fontWeight: '600' },
 });
 
 const pillStyles = StyleSheet.create({

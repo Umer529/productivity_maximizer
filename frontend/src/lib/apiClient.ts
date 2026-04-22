@@ -51,20 +51,31 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const token = await loadToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  if (!res.ok) {
-    const message = data?.message || `Request failed (${res.status})`;
-    throw new Error(message);
+    if (!res.ok) {
+      const message = data?.message || `Request failed (${res.status})`;
+      throw new Error(message);
+    }
+
+    return data as T;
+  } catch (err) {
+    if (err instanceof Error) {
+      // Network errors
+      if (err.message.includes('Network request failed')) {
+        throw new Error('Unable to connect to server. Please check your internet connection.');
+      }
+      throw err;
+    }
+    throw new Error('An unexpected error occurred');
   }
-
-  return data as T;
 }
 
 export const api = {

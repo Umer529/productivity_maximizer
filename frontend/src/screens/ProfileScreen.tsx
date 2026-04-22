@@ -61,13 +61,13 @@ export default function ProfileScreen() {
             <>
               <View style={styles.profileDivider} />
               <View style={styles.statsRow}>
-                <ProfileStat label="CGPA Target" value={String(user.preferences.cgpaTarget)} />
+                <ProfileStat label="CGPA Target" value={String(user.preferences?.cgpaTarget || 3.5)} />
                 <View style={styles.statDivider} />
-                <ProfileStat label="Study/Day" value={`${user.preferences.studyHoursPerDay}h`} />
+                <ProfileStat label="Study/Day" value={`${user.preferences?.studyHoursPerDay || 6}h`} />
                 <View style={styles.statDivider} />
-                <ProfileStat label="Streak" value={`${user.streak}d`} />
+                <ProfileStat label="Streak" value={`${user.streak || 0}d`} />
                 <View style={styles.statDivider} />
-                <ProfileStat label="Semester" value={`S${user.preferences.semester}`} />
+                <ProfileStat label="Semester" value={`S${user.preferences?.semester || 1}`} />
               </View>
             </>
           )}
@@ -76,41 +76,46 @@ export default function ProfileScreen() {
         {user ? (
           <>
             {/* ── Study Preferences ── */}
-            <SettingsSection
-              title="Study Preferences"
-              items={[
-                {
-                  icon: 'timer-outline',
-                  label: 'Focus Sprint',
-                  value: `${user.preferences.focusDuration} min`,
-                  color: colors.primary,
-                },
-                {
-                  icon: 'cafe-outline',
-                  label: 'Break Duration',
-                  value: `${user.preferences.breakDuration} min`,
-                  color: colors.accent,
-                },
-                {
-                  icon: 'moon-outline',
-                  label: 'Namaz Breaks',
-                  value: user.preferences.namazBreaksEnabled ? 'Enabled' : 'Disabled',
-                  color: colors.success,
-                },
-                {
-                  icon: 'time-outline',
-                  label: 'Study Hours',
-                  value: `${user.preferences.studyStartTime} – ${user.preferences.studyEndTime}`,
-                  color: colors.warning,
-                },
-                {
-                  icon: 'bed-outline',
-                  label: 'Sleep Schedule',
-                  value: `${user.preferences.sleepStart} – ${user.preferences.sleepEnd}`,
-                  color: colors.mutedForeground,
-                },
-              ]}
-            />
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ProfileSettings')}
+              activeOpacity={0.7}
+            >
+              <SettingsSection
+                title="Study Preferences"
+                items={[
+                  {
+                    icon: 'timer-outline',
+                    label: 'Focus Sprint',
+                    value: `${user.preferences?.focusDuration || 25} min`,
+                    color: colors.primary,
+                  },
+                  {
+                    icon: 'cafe-outline',
+                    label: 'Break Duration',
+                    value: `${user.preferences?.breakDuration || 5} min`,
+                    color: colors.accent,
+                  },
+                  {
+                    icon: 'moon-outline',
+                    label: 'Namaz Breaks',
+                    value: user.preferences?.namazBreaksEnabled ? 'Enabled' : 'Disabled',
+                    color: colors.success,
+                  },
+                  {
+                    icon: 'time-outline',
+                    label: 'Study Hours',
+                    value: `${user.preferences?.studyStartTime || '08:00'} – ${user.preferences?.studyEndTime || '22:00'}`,
+                    color: colors.warning,
+                  },
+                  {
+                    icon: 'bed-outline',
+                    label: 'Sleep Schedule',
+                    value: `${user.preferences?.sleepStart || '23:00'} – ${user.preferences?.sleepEnd || '07:00'}`,
+                    color: colors.mutedForeground,
+                  },
+                ]}
+              />
+            </TouchableOpacity>
 
             {/* ── Integrations ── */}
             <SettingsSection

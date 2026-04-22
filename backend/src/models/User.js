@@ -30,6 +30,21 @@ function rowToUser(row) {
     streak:               row.streak,
     lastStudyDate:        row.last_study_date ? new Date(row.last_study_date) : null,
     totalStudyMinutes:    row.total_study_minutes,
+    // Nested preferences object for frontend compatibility
+    preferences: {
+      cgpaTarget:          row.cgpa_target,
+      semester:            row.semester,
+      studyHoursPerDay:    row.study_hours_per_day,
+      focusDuration:       row.focus_duration,
+      breakDuration:       row.break_duration,
+      longBreakDuration:   row.long_break_duration,
+      longBreakAfter:      row.long_break_after,
+      namazBreaksEnabled:  row.namaz_breaks_enabled === 1,
+      sleepStart:          row.sleep_start,
+      sleepEnd:            row.sleep_end,
+      studyStartTime:      row.study_start_time,
+      studyEndTime:        row.study_end_time,
+    },
     // ML Feature Fields
     age:                  row.age,
     gender:               row.gender,

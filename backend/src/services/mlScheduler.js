@@ -9,7 +9,7 @@ const path = require('path');
 class MLScheduler {
   constructor() {
     this.pythonScript = path.join(__dirname, '../../python/predictor.py');
-    this.modelsDir = path.join(__dirname, '../../artifacts');
+    this.modelsDir = path.join(__dirname, '../../../artifacts');
     this.cache = new Map();
     this.cacheTimeout = 300000; // 5 minutes
   }
@@ -47,12 +47,17 @@ class MLScheduler {
     // Extract student features from user data
     const features = this._extractStudentFeatures(user);
     
+    // Prioritize tasks before sending to ML
+    const prioritizedTasks = this._prioritizeTasks(tasks);
+    
     // Format tasks for ML
-    const mlTasks = tasks.map(t => ({
+    const mlTasks = prioritizedTasks.map(t => ({
       name: t.title,
       deadline: t.deadline,
       difficulty: t.difficulty || 3,
-      estimated_hours: t.estimatedDuration || 2
+      estimated_hours: (t.estimatedDuration || 120) / 60, // Convert to hours
+      priority_score: t._priorityScore || 0.5,
+      urgency: t._urgency || 'medium'
     }));
     
     // Get schedule from ML
@@ -78,15 +83,72 @@ class MLScheduler {
   }
 
   /**
+   * Prioritize tasks based on deadline urgency, difficulty, and user productivity
+   */
+  _prioritizeTasks(tasks) {
+    const now = new Date();
+    
+    return tasks.map(task => {
+      const deadline = new Date(task.deadline);
+      const daysUntilDeadline = Math.max(0, (deadline - now) / (1000 * 60 * 60 * 24));
+      
+      // Calculate urgency score (0-1, higher = more urgent)
+      let urgencyScore = 0;
+      if (daysUntilDeadline <= 1) urgencyScore = 1.0;
+      else if (daysUntilDeadline <= 3) urgencyScore = 0.8;
+      else if (daysUntilDeadline <= 7) urgencyScore = 0.6;
+      else if (daysUntilDeadline <= 14) urgencyScore = 0.4;
+      else urgencyScore = 0.2;
+      
+      // Calculate priority score combining urgency, difficulty, and type
+      const difficultyWeight = (task.difficulty || 3) / 5;
+      const typeWeight = this._getTypePriorityWeight(task.type);
+      
+      const priorityScore = (urgencyScore * 0.5) + (difficultyWeight * 0.3) + (typeWeight * 0.2);
+      
+      // Determine urgency label
+      let urgency = 'low';
+      if (urgencyScore >= 0.8) urgency = 'critical';
+      else if (urgencyScore >= 0.6) urgency = 'high';
+      else if (urgencyScore >= 0.4) urgency = 'medium';
+      
+      return {
+        ...task,
+        _priorityScore: priorityScore,
+        _urgency: urgency,
+        _daysUntilDeadline: daysUntilDeadline
+      };
+    }).sort((a, b) => b._priorityScore - a._priorityScore); // Sort by priority (highest first)
+  }
+
+  /**
+   * Get priority weight based on task type
+   */
+  _getTypePriorityWeight(type) {
+    const weights = {
+      'final': 1.0,
+      'midterm': 0.9,
+      'quiz': 0.7,
+      'assignment': 0.6,
+      'project': 0.8,
+      'other': 0.4
+    };
+    return weights[type] || 0.5;
+  }
+
+  /**
    * Generate AI-optimized weekly schedule
    */
   async generateWeeklySchedule(user, tasks) {
     const features = this._extractStudentFeatures(user);
-    const mlTasks = tasks.map(t => ({
+    const prioritizedTasks = this._prioritizeTasks(tasks);
+    const mlTasks = prioritizedTasks.map(t => ({
       name: t.title,
       deadline: t.deadline,
       difficulty: t.difficulty || 3,
-      estimated_hours: t.estimatedDuration || 2
+      estimated_hours: (t.estimatedDuration || 120) / 60,
+      priority_score: t._priorityScore || 0.5,
+      urgency: t._urgency || 'medium'
     }));
     
     // For weekly, we'll generate daily schedules for each day
@@ -125,15 +187,80 @@ class MLScheduler {
   async getProductivityPredictions(user) {
     const features = this._extractStudentFeatures(user);
     const result = await this.predictStudent(features, null, 'all');
-    
+
     if (result.error) {
       throw new Error(result.error);
     }
-    
+
+    // Calculate burnout risk
+    const burnoutRisk = this._calculateBurnoutRisk(user, features);
+
     return {
       productivity_score: result.productivity_score,
       required_hours: result.required_hours,
-      break_interval: result.break_interval
+      break_interval: result.break_interval,
+      burnout_risk: burnoutRisk
+    };
+  }
+
+  /**
+   * Calculate burnout risk based on user metrics
+   */
+  _calculateBurnoutRisk(user, features) {
+    // Stress factor (feature 15) - higher is worse
+    const stressFactor = features[15] || 30;
+
+    // Mental health rating (feature 12) - lower is worse
+    const mentalHealth = features[12] || 7;
+
+    // Study hours per day (feature 2) - excessive study increases risk
+    const studyHours = features[2] || 6;
+
+    // Sleep hours (feature 7) - less sleep increases risk
+    const sleepHours = features[7] || 7;
+
+    // Streak - long streaks without breaks can indicate burnout risk
+    const streak = user.streak || 0;
+
+    // Calculate risk score (0-100)
+    let riskScore = 0;
+
+    // Stress contribution (0-40 points)
+    riskScore += (stressFactor / 100) * 40;
+
+    // Mental health contribution (0-25 points, inverted)
+    riskScore += ((10 - mentalHealth) / 10) * 25;
+
+    // Study hours contribution (0-15 points, excessive is >8 hours)
+    if (studyHours > 10) riskScore += 15;
+    else if (studyHours > 8) riskScore += 10;
+    else if (studyHours > 6) riskScore += 5;
+
+    // Sleep contribution (0-10 points, less than 6 hours is bad)
+    if (sleepHours < 5) riskScore += 10;
+    else if (sleepHours < 6) riskScore += 7;
+    else if (sleepHours < 7) riskScore += 4;
+
+    // Streak contribution (0-10 points, very long streaks may need rest)
+    if (streak > 30) riskScore += 10;
+    else if (streak > 21) riskScore += 7;
+    else if (streak > 14) riskScore += 4;
+
+    // Determine risk level
+    let riskLevel = 'low';
+    if (riskScore >= 70) riskLevel = 'critical';
+    else if (riskScore >= 50) riskLevel = 'high';
+    else if (riskScore >= 30) riskLevel = 'moderate';
+
+    return {
+      score: Math.round(riskScore),
+      level: riskLevel,
+      factors: {
+        stress: Math.round((stressFactor / 100) * 40),
+        mentalHealth: Math.round(((10 - mentalHealth) / 10) * 25),
+        studyLoad: studyHours > 8 ? 10 : Math.round((studyHours / 8) * 10),
+        sleep: sleepHours < 6 ? 10 : Math.round(((7 - sleepHours) / 7) * 10),
+      }
     };
   }
 
@@ -206,7 +333,7 @@ class MLScheduler {
   _extractStudentFeatures(user) {
     // Default/placeholder values for features not in current user model
     // These should be collected via onboarding/profile update
-    
+
     return [
       user.age || 20,                                    // 0: age
       this._encodeGender(user.gender) || 1,             // 1: gender (0=F, 1=M, 2=Other)
@@ -214,7 +341,7 @@ class MLScheduler {
       user.socialMediaHours || 2,                        // 3: social_media_hours
       user.netflixHours || 1,                            // 4: netflix_hours
       user.hasPartTimeJob ? 1 : 0,                       // 5: has_part_time_job
-      95,                                                 // 6: attendance_percentage (placeholder)
+      user.attendancePercentage || 95,                   // 6: attendance_percentage
       user.sleepHours || 7,                              // 7: sleep_hours
       this._encodeDietQuality(user.dietQuality) || 1,   // 8: diet_quality
       user.exerciseFrequency || 3,                       // 9: exercise_frequency

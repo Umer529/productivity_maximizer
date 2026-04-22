@@ -72,7 +72,19 @@ exports.endSession = (req, res, next) => {
       streakUpdate.streak = (lastStudy === yesterday.toDateString()) ? user.streak + 1 : 1;
       streakUpdate.lastStudyDate = new Date().toISOString();
     }
-    User.update(req.user.id, { totalStudyMinutes: user.totalStudyMinutes + actualDuration, ...streakUpdate });
+
+    // Calculate productivity metrics
+    const completionRate = session.completed ? 1.0 : 0.5;
+    const efficiency = actualDuration > 0 ? (session.plannedDuration / actualDuration) * 100 : 50;
+    const avgEfficiency = (user.timeEfficiency || 70 * 0.9) + (efficiency * 0.1);
+    const newProductivityIndex = Math.min(100, (user.productivityIndex || 50) + (completionRate * 5));
+
+    User.update(req.user.id, {
+      totalStudyMinutes: user.totalStudyMinutes + actualDuration,
+      ...streakUpdate,
+      productivityIndex: newProductivityIndex,
+      timeEfficiency: avgEfficiency,
+    });
 
     // Update task progress if provided
     if (session.taskId && req.body.taskProgress !== undefined) {
