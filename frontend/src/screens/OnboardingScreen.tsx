@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +20,19 @@ import { api } from '../lib/apiClient';
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'> & {
   onComplete: () => void;
 };
+
+// Helper function to generate time options
+function generateTimeOptions() {
+  const options = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let min = 0; min < 60; min += 30) {
+      const hourStr = hour.toString().padStart(2, '0');
+      const minStr = min.toString().padStart(2, '0');
+      options.push(`${hourStr}:${minStr}`);
+    }
+  }
+  return options;
+}
 
 export default function OnboardingScreen({ onComplete }: Props) {
   const { user, updateUser } = useAuth();
@@ -34,6 +49,16 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const [namazBreaksEnabled, setNamazBreaksEnabled] = useState(true);
   const [sleepStart, setSleepStart] = useState('23:00');
   const [sleepEnd, setSleepEnd] = useState('07:00');
+
+  // Picker modals
+  const [semesterPickerVisible, setSemesterPickerVisible] = useState(false);
+  const [studyHoursPickerVisible, setStudyHoursPickerVisible] = useState(false);
+  const [sleepStartPickerVisible, setSleepStartPickerVisible] = useState(false);
+  const [sleepEndPickerVisible, setSleepEndPickerVisible] = useState(false);
+
+  const SEMESTER_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8'];
+  const STUDY_HOURS_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+  const TIME_OPTIONS = generateTimeOptions();
 
   const handleNext = async () => {
     if (current < 2) {
@@ -91,8 +116,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
             </View>
             <View style={styles.form}>
               <FormInput label="CGPA Target" value={cgpaTarget} onChangeText={setCgpaTarget} keyboardType="decimal-pad" placeholder="3.5" />
-              <FormInput label="Current Semester" value={semester} onChangeText={setSemester} keyboardType="number-pad" placeholder="1" />
-              <FormInput label="Study Hours/Day" value={studyHoursPerDay} onChangeText={setStudyHoursPerDay} keyboardType="decimal-pad" placeholder="6" />
+              <PickerButton label="Current Semester" value={`Semester ${semester}`} onPress={() => setSemesterPickerVisible(true)} />
+              <PickerButton label="Study Hours/Day" value={`${studyHoursPerDay} hours`} onPress={() => setStudyHoursPickerVisible(true)} />
             </View>
           </>
         );
@@ -110,8 +135,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
               <FormInput label="Focus Duration (min)" value={focusDuration} onChangeText={setFocusDuration} keyboardType="number-pad" placeholder="25" />
               <FormInput label="Break Duration (min)" value={breakDuration} onChangeText={setBreakDuration} keyboardType="number-pad" placeholder="5" />
               <ToggleRow label="Enable Namaz Breaks" value={namazBreaksEnabled} onToggle={setNamazBreaksEnabled} />
-              <FormInput label="Sleep Start" value={sleepStart} onChangeText={setSleepStart} placeholder="23:00" />
-              <FormInput label="Sleep End" value={sleepEnd} onChangeText={setSleepEnd} placeholder="07:00" />
+              <PickerButton label="Sleep Start" value={sleepStart} onPress={() => setSleepStartPickerVisible(true)} />
+              <PickerButton label="Sleep End" value={sleepEnd} onPress={() => setSleepEndPickerVisible(true)} />
             </View>
           </>
         );
@@ -160,6 +185,46 @@ export default function OnboardingScreen({ onComplete }: Props) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Semester Picker Modal */}
+      <PickerModal
+        visible={semesterPickerVisible}
+        onClose={() => setSemesterPickerVisible(false)}
+        options={SEMESTER_OPTIONS}
+        selectedValue={semester}
+        onSelect={setSemester}
+        label="Semester"
+      />
+
+      {/* Study Hours Picker Modal */}
+      <PickerModal
+        visible={studyHoursPickerVisible}
+        onClose={() => setStudyHoursPickerVisible(false)}
+        options={STUDY_HOURS_OPTIONS}
+        selectedValue={studyHoursPerDay}
+        onSelect={setStudyHoursPerDay}
+        label="Study Hours"
+      />
+
+      {/* Sleep Start Picker Modal */}
+      <PickerModal
+        visible={sleepStartPickerVisible}
+        onClose={() => setSleepStartPickerVisible(false)}
+        options={TIME_OPTIONS}
+        selectedValue={sleepStart}
+        onSelect={setSleepStart}
+        label="Sleep Start"
+      />
+
+      {/* Sleep End Picker Modal */}
+      <PickerModal
+        visible={sleepEndPickerVisible}
+        onClose={() => setSleepEndPickerVisible(false)}
+        options={TIME_OPTIONS}
+        selectedValue={sleepEnd}
+        onSelect={setSleepEnd}
+        label="Sleep End"
+      />
     </SafeAreaView>
   );
 }
@@ -188,6 +253,54 @@ function ToggleRow({ label, value, onToggle }: any) {
         <View style={[formStyles.toggleDot, value && formStyles.toggleDotActive]} />
       </TouchableOpacity>
     </View>
+  );
+}
+
+function PickerButton({ label, value, onPress }: any) {
+  return (
+    <TouchableOpacity style={formStyles.row} onPress={onPress}>
+      <Text style={formStyles.label}>{label}</Text>
+      <View style={formStyles.pickerValue}>
+        <Text style={formStyles.pickerValueText}>{value}</Text>
+        <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function PickerModal({ visible, onClose, options, selectedValue, onSelect, label }: any) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.container}>
+          <View style={modalStyles.header}>
+            <Text style={modalStyles.title}>Select {label}</Text>
+            <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+              <Ionicons name="close" size={24} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={modalStyles.optionsList}>
+            {options.map((option: string) => (
+              <TouchableOpacity
+                key={option}
+                style={[modalStyles.option, selectedValue === option && modalStyles.optionSelected]}
+                onPress={() => {
+                  onSelect(option);
+                  onClose();
+                }}
+              >
+                <Text style={[modalStyles.optionText, selectedValue === option && modalStyles.optionTextSelected]}>
+                  {option}
+                </Text>
+                {selectedValue === option && (
+                  <Ionicons name="checkmark" size={20} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -328,6 +441,16 @@ const formStyles = StyleSheet.create({
     minWidth: 80,
     textAlign: 'right',
   },
+  pickerValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  pickerValueText: {
+    fontSize: typography.sm,
+    color: colors.foreground,
+    fontWeight: '600',
+  },
   toggle: {
     width: 48,
     height: 28,
@@ -343,4 +466,62 @@ const formStyles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   toggleDotActive: { transform: [{ translateX: 20 }] },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    maxHeight: '70%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  title: {
+    fontSize: typography.lg,
+    fontWeight: '700',
+    color: colors.foreground,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionsList: {
+    paddingVertical: spacing.md,
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  optionSelected: {
+    backgroundColor: colors.primaryDim,
+  },
+  optionText: {
+    fontSize: typography.base,
+    color: colors.foreground,
+  },
+  optionTextSelected: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
 });

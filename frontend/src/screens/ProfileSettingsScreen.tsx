@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,22 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 const DIET_OPTIONS = ['Poor', 'Fair', 'Good', 'Excellent'];
 const INTERNET_OPTIONS = ['Poor', 'Fair', 'Good', 'Excellent'];
 const EDUCATION_OPTIONS = ['High School', 'Bachelor', 'Master', 'PhD'];
+const SEMESTER_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8'];
+const STUDY_HOURS_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+
+function generateTimeOptions() {
+  const options = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let min = 0; min < 60; min += 30) {
+      const hourStr = hour.toString().padStart(2, '0');
+      const minStr = min.toString().padStart(2, '0');
+      options.push(`${hourStr}:${minStr}`);
+    }
+  }
+  return options;
+}
+
+const TIME_OPTIONS = generateTimeOptions();
 
 export default function ProfileSettingsScreen() {
   const navigation = useNavigation<NavProp>();
@@ -45,6 +62,14 @@ export default function ProfileSettingsScreen() {
   const [sleepEnd, setSleepEnd] = useState(user?.preferences?.sleepEnd || '07:00');
   const [studyStartTime, setStudyStartTime] = useState(user?.preferences?.studyStartTime || '09:00');
   const [studyEndTime, setStudyEndTime] = useState(user?.preferences?.studyEndTime || '18:00');
+
+  // Picker modals
+  const [semesterPickerVisible, setSemesterPickerVisible] = useState(false);
+  const [studyHoursPickerVisible, setStudyHoursPickerVisible] = useState(false);
+  const [sleepStartPickerVisible, setSleepStartPickerVisible] = useState(false);
+  const [sleepEndPickerVisible, setSleepEndPickerVisible] = useState(false);
+  const [studyStartPickerVisible, setStudyStartPickerVisible] = useState(false);
+  const [studyEndPickerVisible, setStudyEndPickerVisible] = useState(false);
 
   // ML Features
   const [age, setAge] = useState(String(user?.age || 20));
@@ -136,21 +161,11 @@ export default function ProfileSettingsScreen() {
           </SettingRow>
 
           <SettingRow label="Semester">
-            <TextInput
-              style={styles.input}
-              value={semester}
-              onChangeText={setSemester}
-              keyboardType="number-pad"
-            />
+            <PickerButton value={`Semester ${semester}`} onPress={() => setSemesterPickerVisible(true)} />
           </SettingRow>
 
           <SettingRow label="Study Hours/Day">
-            <TextInput
-              style={styles.input}
-              value={studyHoursPerDay}
-              onChangeText={setStudyHoursPerDay}
-              keyboardType="decimal-pad"
-            />
+            <PickerButton value={`${studyHoursPerDay} hours`} onPress={() => setStudyHoursPickerVisible(true)} />
           </SettingRow>
 
           <SettingRow label="Focus Duration (min)">
@@ -181,39 +196,19 @@ export default function ProfileSettingsScreen() {
           </SettingRow>
 
           <SettingRow label="Sleep Start">
-            <TextInput
-              style={styles.input}
-              value={sleepStart}
-              onChangeText={setSleepStart}
-              placeholder="HH:MM"
-            />
+            <PickerButton value={sleepStart} onPress={() => setSleepStartPickerVisible(true)} />
           </SettingRow>
 
           <SettingRow label="Sleep End">
-            <TextInput
-              style={styles.input}
-              value={sleepEnd}
-              onChangeText={setSleepEnd}
-              placeholder="HH:MM"
-            />
+            <PickerButton value={sleepEnd} onPress={() => setSleepEndPickerVisible(true)} />
           </SettingRow>
 
           <SettingRow label="Study Start">
-            <TextInput
-              style={styles.input}
-              value={studyStartTime}
-              onChangeText={setStudyStartTime}
-              placeholder="HH:MM"
-            />
+            <PickerButton value={studyStartTime} onPress={() => setStudyStartPickerVisible(true)} />
           </SettingRow>
 
           <SettingRow label="Study End">
-            <TextInput
-              style={styles.input}
-              value={studyEndTime}
-              onChangeText={setStudyEndTime}
-              placeholder="HH:MM"
-            />
+            <PickerButton value={studyEndTime} onPress={() => setStudyEndPickerVisible(true)} />
           </SettingRow>
         </View>
 
@@ -391,6 +386,61 @@ export default function ProfileSettingsScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Picker Modals */}
+      <PickerModal
+        visible={semesterPickerVisible}
+        onClose={() => setSemesterPickerVisible(false)}
+        options={SEMESTER_OPTIONS}
+        selectedValue={semester}
+        onSelect={setSemester}
+        label="Semester"
+      />
+
+      <PickerModal
+        visible={studyHoursPickerVisible}
+        onClose={() => setStudyHoursPickerVisible(false)}
+        options={STUDY_HOURS_OPTIONS}
+        selectedValue={studyHoursPerDay}
+        onSelect={setStudyHoursPerDay}
+        label="Study Hours"
+      />
+
+      <PickerModal
+        visible={sleepStartPickerVisible}
+        onClose={() => setSleepStartPickerVisible(false)}
+        options={TIME_OPTIONS}
+        selectedValue={sleepStart}
+        onSelect={setSleepStart}
+        label="Sleep Start"
+      />
+
+      <PickerModal
+        visible={sleepEndPickerVisible}
+        onClose={() => setSleepEndPickerVisible(false)}
+        options={TIME_OPTIONS}
+        selectedValue={sleepEnd}
+        onSelect={setSleepEnd}
+        label="Sleep End"
+      />
+
+      <PickerModal
+        visible={studyStartPickerVisible}
+        onClose={() => setStudyStartPickerVisible(false)}
+        options={TIME_OPTIONS}
+        selectedValue={studyStartTime}
+        onSelect={setStudyStartTime}
+        label="Study Start"
+      />
+
+      <PickerModal
+        visible={studyEndPickerVisible}
+        onClose={() => setStudyEndPickerVisible(false)}
+        options={TIME_OPTIONS}
+        selectedValue={studyEndTime}
+        onSelect={setStudyEndTime}
+        label="Study End"
+      />
     </SafeAreaView>
   );
 }
@@ -401,6 +451,51 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
       <Text style={rowStyles.label}>{label}</Text>
       {children}
     </View>
+  );
+}
+
+function PickerButton({ value, onPress }: any) {
+  return (
+    <TouchableOpacity style={rowStyles.pickerBtn} onPress={onPress}>
+      <Text style={rowStyles.pickerBtnText}>{value}</Text>
+      <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} />
+    </TouchableOpacity>
+  );
+}
+
+function PickerModal({ visible, onClose, options, selectedValue, onSelect, label }: any) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.container}>
+          <View style={modalStyles.header}>
+            <Text style={modalStyles.title}>Select {label}</Text>
+            <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+              <Ionicons name="close" size={24} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={modalStyles.optionsList}>
+            {options.map((option: string) => (
+              <TouchableOpacity
+                key={option}
+                style={[modalStyles.option, selectedValue === option && modalStyles.optionSelected]}
+                onPress={() => {
+                  onSelect(option);
+                  onClose();
+                }}
+              >
+                <Text style={[modalStyles.optionText, selectedValue === option && modalStyles.optionTextSelected]}>
+                  {option}
+                </Text>
+                {selectedValue === option && (
+                  <Ionicons name="checkmark" size={20} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -538,4 +633,76 @@ const rowStyles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   label: { fontSize: typography.sm, color: colors.foreground, fontWeight: '500' },
+  pickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.muted,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  pickerBtnText: {
+    fontSize: typography.sm,
+    color: colors.foreground,
+    fontWeight: '600',
+  },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    maxHeight: '70%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  title: {
+    fontSize: typography.lg,
+    fontWeight: '700',
+    color: colors.foreground,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionsList: {
+    paddingVertical: spacing.md,
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  optionSelected: {
+    backgroundColor: colors.primaryDim,
+  },
+  optionText: {
+    fontSize: typography.base,
+    color: colors.foreground,
+  },
+  optionTextSelected: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
 });

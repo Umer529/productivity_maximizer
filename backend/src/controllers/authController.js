@@ -146,42 +146,45 @@ exports.updateProfile = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Update preferences
-    if (cgpaTarget !== undefined) user.cgpaTarget = cgpaTarget;
-    if (semester !== undefined) user.semester = semester;
-    if (studyHoursPerDay !== undefined) user.studyHoursPerDay = studyHoursPerDay;
-    if (focusDuration !== undefined) user.focusDuration = focusDuration;
-    if (breakDuration !== undefined) user.breakDuration = breakDuration;
-    if (longBreakDuration !== undefined) user.longBreakDuration = longBreakDuration;
-    if (longBreakAfter !== undefined) user.longBreakAfter = longBreakAfter;
-    if (namazBreaksEnabled !== undefined) user.namazBreaksEnabled = namazBreaksEnabled;
-    if (sleepStart !== undefined) user.sleepStart = sleepStart;
-    if (sleepEnd !== undefined) user.sleepEnd = sleepEnd;
-    if (studyStartTime !== undefined) user.studyStartTime = studyStartTime;
-    if (studyEndTime !== undefined) user.studyEndTime = studyEndTime;
+    // Build update object with only provided fields
+    const updateFields = {};
+    
+    // Preferences
+    if (cgpaTarget !== undefined) updateFields.cgpaTarget = cgpaTarget;
+    if (semester !== undefined) updateFields.semester = semester;
+    if (studyHoursPerDay !== undefined) updateFields.studyHoursPerDay = studyHoursPerDay;
+    if (focusDuration !== undefined) updateFields.focusDuration = focusDuration;
+    if (breakDuration !== undefined) updateFields.breakDuration = breakDuration;
+    if (longBreakDuration !== undefined) updateFields.longBreakDuration = longBreakDuration;
+    if (longBreakAfter !== undefined) updateFields.longBreakAfter = longBreakAfter;
+    if (namazBreaksEnabled !== undefined) updateFields.namazBreaksEnabled = namazBreaksEnabled;
+    if (sleepStart !== undefined) updateFields.sleepStart = sleepStart;
+    if (sleepEnd !== undefined) updateFields.sleepEnd = sleepEnd;
+    if (studyStartTime !== undefined) updateFields.studyStartTime = studyStartTime;
+    if (studyEndTime !== undefined) updateFields.studyEndTime = studyEndTime;
 
-    // Update ML features
-    if (age !== undefined) user.age = age;
-    if (gender !== undefined) user.gender = gender;
-    if (socialMediaHours !== undefined) user.socialMediaHours = socialMediaHours;
-    if (netflixHours !== undefined) user.netflixHours = netflixHours;
-    if (hasPartTimeJob !== undefined) user.hasPartTimeJob = hasPartTimeJob;
-    if (attendancePercentage !== undefined) user.attendancePercentage = attendancePercentage;
-    if (sleepHours !== undefined) user.sleepHours = sleepHours;
-    if (dietQuality !== undefined) user.dietQuality = dietQuality;
-    if (exerciseFrequency !== undefined) user.exerciseFrequency = exerciseFrequency;
-    if (parentalEducationLevel !== undefined) user.parentalEducationLevel = parentalEducationLevel;
-    if (internetQuality !== undefined) user.internetQuality = internetQuality;
-    if (mentalHealthRating !== undefined) user.mentalHealthRating = mentalHealthRating;
-    if (extraCurricularParticipation !== undefined) user.extraCurricularParticipation = extraCurricularParticipation;
-    if (productivityIndex !== undefined) user.productivityIndex = productivityIndex;
-    if (stressFactor !== undefined) user.stressFactor = stressFactor;
-    if (engagementScore !== undefined) user.engagementScore = engagementScore;
-    if (timeEfficiency !== undefined) user.timeEfficiency = timeEfficiency;
-    if (lifeBalanceScore !== undefined) user.lifeBalanceScore = lifeBalanceScore;
+    // ML features
+    if (age !== undefined) updateFields.age = age;
+    if (gender !== undefined) updateFields.gender = gender;
+    if (socialMediaHours !== undefined) updateFields.socialMediaHours = socialMediaHours;
+    if (netflixHours !== undefined) updateFields.netflixHours = netflixHours;
+    if (hasPartTimeJob !== undefined) updateFields.hasPartTimeJob = hasPartTimeJob;
+    if (attendancePercentage !== undefined) updateFields.attendancePercentage = attendancePercentage;
+    if (sleepHours !== undefined) updateFields.sleepHours = sleepHours;
+    if (dietQuality !== undefined) updateFields.dietQuality = dietQuality;
+    if (exerciseFrequency !== undefined) updateFields.exerciseFrequency = exerciseFrequency;
+    if (parentalEducationLevel !== undefined) updateFields.parentalEducationLevel = parentalEducationLevel;
+    if (internetQuality !== undefined) updateFields.internetQuality = internetQuality;
+    if (mentalHealthRating !== undefined) updateFields.mentalHealthRating = mentalHealthRating;
+    if (extraCurricularParticipation !== undefined) updateFields.extraCurricularParticipation = extraCurricularParticipation;
+    if (productivityIndex !== undefined) updateFields.productivityIndex = productivityIndex;
+    if (stressFactor !== undefined) updateFields.stressFactor = stressFactor;
+    if (engagementScore !== undefined) updateFields.engagementScore = engagementScore;
+    if (timeEfficiency !== undefined) updateFields.timeEfficiency = timeEfficiency;
+    if (lifeBalanceScore !== undefined) updateFields.lifeBalanceScore = lifeBalanceScore;
 
-    User.save(user);
-    sendTokenResponse(user, 200, res);
+    const updatedUser = User.update(req.user.id, updateFields);
+    sendTokenResponse(updatedUser, 200, res);
   } catch (err) {
     next(err);
   }
