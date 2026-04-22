@@ -56,7 +56,7 @@ export default function ProfileScreen() {
   const [longBreakDuration, setLongBreakDuration] = useState(String(user?.preferences?.longBreakDuration || 15));
   const [longBreakAfter, setLongBreakAfter] = useState(String(user?.preferences?.longBreakAfter || 4));
   const [namazBreaksEnabled, setNamazBreaksEnabled] = useState(user?.preferences?.namazBreaksEnabled || false);
-  const [selectedNamazPrayers, setSelectedNamazPrayers] = useState<string[]>(user?.preferences?.selectedNamazPrayers || []);
+  const [selectedNamazPrayers, setSelectedNamazPrayers] = useState<string[]>(user?.preferences?.selectedNamazPrayers as string[] || []);
   const [sleepStart, setSleepStart] = useState(user?.preferences?.sleepStart || '23:00');
   const [sleepEnd, setSleepEnd] = useState(user?.preferences?.sleepEnd || '07:00');
   const [studyStartTime, setStudyStartTime] = useState(user?.preferences?.studyStartTime || '09:00');
@@ -215,10 +215,10 @@ export default function ProfileScreen() {
                 {isEditing ? (
                   <>
                     <SettingRow label="CGPA Target (2.0-4.0)">
-                      <Slider
-                        value={parseFloat(cgpaTarget)}
+                      <Stepper
+                        value={cgpaTarget}
                         onValueChange={(val) => {
-                          setCgpaTarget(val.toFixed(1));
+                          setCgpaTarget(val);
                           setCgpaError('');
                         }}
                         min={2.0}
@@ -255,9 +255,9 @@ export default function ProfileScreen() {
                 {isEditing ? (
                   <>
                     <SettingRow label="Study Hours/Day">
-                      <Slider
-                        value={parseFloat(studyHoursPerDay)}
-                        onValueChange={(val) => setStudyHoursPerDay(val.toString())}
+                      <Stepper
+                        value={studyHoursPerDay}
+                        onValueChange={(val) => setStudyHoursPerDay(val)}
                         min={1}
                         max={12}
                         step={0.5}
@@ -476,7 +476,7 @@ export default function ProfileScreen() {
                     setLongBreakDuration(String(user?.preferences?.longBreakDuration || 15));
                     setLongBreakAfter(String(user?.preferences?.longBreakAfter || 4));
                     setNamazBreaksEnabled(user?.preferences?.namazBreaksEnabled || false);
-                    setSelectedNamazPrayers(user?.preferences?.selectedNamazPrayers || []);
+                    setSelectedNamazPrayers(user?.preferences?.selectedNamazPrayers as string[] || []);
                     setSleepStart(user?.preferences?.sleepStart || '23:00');
                     setSleepEnd(user?.preferences?.sleepEnd || '07:00');
                     setStudyStartTime(user?.preferences?.studyStartTime || '09:00');
@@ -612,47 +612,38 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-function Slider({ value, onValueChange, min, max, step }: any) {
-  const handleTrackPress = (event: any) => {
-    const { locationX } = event.nativeEvent;
-    const trackWidth = event.currentTarget.layout.width;
-    const percentage = Math.max(0, Math.min(1, locationX / trackWidth));
-    const newValue = min + percentage * (max - min);
-    const steppedValue = Math.round(newValue / step) * step;
-    onValueChange(steppedValue);
+function Stepper({ value, onValueChange, min, max, step }: { value: string; onValueChange: (val: string) => void; min: number; max: number; step: number }) {
+  const handleIncrement = () => {
+    const newValue = parseFloat(value) + step;
+    if (newValue <= max) {
+      onValueChange(newValue.toFixed(step >= 1 ? 0 : 1));
+    }
+  };
+
+  const handleDecrement = () => {
+    const newValue = parseFloat(value) - step;
+    if (newValue >= min) {
+      onValueChange(newValue.toFixed(step >= 1 ? 0 : 1));
+    }
   };
 
   return (
-    <View style={sliderStyles.container}>
+    <View style={stepperStyles.container}>
       <TouchableOpacity
-        style={sliderStyles.trackContainer}
-        onPress={handleTrackPress}
-        activeOpacity={1}
+        style={stepperStyles.button}
+        onPress={handleDecrement}
+        disabled={parseFloat(value) <= min}
       >
-        <View style={sliderStyles.track}>
-          <View
-            style={[
-              sliderStyles.fill,
-              {
-                width: `${((value - min) / (max - min)) * 100}%`,
-              },
-            ]}
-          />
-        </View>
-        <TouchableOpacity
-          style={[
-            sliderStyles.thumb,
-            {
-            left: `${((value - min) / (max - min)) * 100}%`,
-          },
-        ]}
-          onPress={(e) => e.stopPropagation()}
-          activeOpacity={1}
-        >
-          <View style={sliderStyles.thumbInner} />
-        </TouchableOpacity>
+        <Ionicons name="remove" size={20} color={colors.primary} />
       </TouchableOpacity>
-      <Text style={sliderStyles.value}>{value}</Text>
+      <Text style={stepperStyles.value}>{value}</Text>
+      <TouchableOpacity
+        style={stepperStyles.button}
+        onPress={handleIncrement}
+        disabled={parseFloat(value) >= max}
+      >
+        <Ionicons name="add" size={20} color={colors.primary} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -1049,52 +1040,26 @@ const rowStyles = StyleSheet.create({
   children: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });
 
-const sliderStyles = StyleSheet.create({
+const stepperStyles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    flex: 1,
   },
-  trackContainer: {
-    flex: 1,
-    height: 30,
+  button: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryDim,
+    alignItems: 'center',
     justifyContent: 'center',
-  },
-  track: {
-    height: 6,
-    backgroundColor: colors.muted,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  fill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-  },
-  thumb: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    transform: [{ translateX: -12 }],
-    ...shadows.primary,
-  },
-  thumbInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.white,
-    position: 'absolute',
-    top: 6,
-    left: 6,
   },
   value: {
     fontSize: typography.sm,
     color: colors.foreground,
     fontWeight: '600',
     minWidth: 40,
-    textAlign: 'right',
+    textAlign: 'center',
   },
 });
 
