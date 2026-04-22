@@ -4,136 +4,190 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  Dimensions,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { colors } from '../lib/theme';
+import { colors, spacing, radius, typography } from '../lib/theme';
+import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/apiClient';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'> & {
   onComplete: () => void;
 };
 
-const { width } = Dimensions.get('window');
-
-const slides = [
-  {
-    icon: 'hardware-chip' as const,
-    iconColor: colors.primary,
-    title: 'Welcome to FocusFlow AI',
-    subtitle: 'AI-powered smart study planner that adapts to your rhythm',
-    items: null,
-  },
-  {
-    icon: 'flag' as const,
-    iconColor: colors.secondary,
-    title: 'Set Academic Goals',
-    subtitle: 'Define your CGPA target, courses, and study preferences',
-    items: [
-      { label: 'CGPA Target', value: '3.8' },
-      { label: 'Courses', value: '5 this semester' },
-      { label: 'Study Hours', value: '6h/day' },
-    ],
-  },
-  {
-    icon: 'time' as const,
-    iconColor: colors.accent,
-    title: 'Smart Preferences',
-    subtitle: 'Customize breaks, focus sprints, and prayer reminders',
-    items: [
-      { label: 'Focus Sprint', value: '25 min' },
-      { label: 'Break Frequency', value: 'Every 2 sessions' },
-      { label: 'Namaz Breaks', value: 'Enabled' },
-      { label: 'Sleep Schedule', value: '11PM - 7AM' },
-    ],
-  },
-  {
-    icon: 'shield-checkmark' as const,
-    iconColor: colors.success,
-    title: 'Ready to Focus',
-    subtitle: 'Enable notifications and start your AI-powered study journey',
-    items: [
-      { label: 'Study Reminders', value: 'Get deadline alerts' },
-      { label: 'Focus Mode', value: 'Minimize distractions' },
-      { label: 'AI Schedule', value: 'Personalized daily plan' },
-    ],
-  },
-];
-
 export default function OnboardingScreen({ onComplete }: Props) {
+  const { user, updateUser } = useAuth();
   const [current, setCurrent] = useState(0);
-  const slide = slides[current];
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Form state
+  const [cgpaTarget, setCgpaTarget] = useState('3.5');
+  const [semester, setSemester] = useState('1');
+  const [studyHoursPerDay, setStudyHoursPerDay] = useState('6');
+  const [focusDuration, setFocusDuration] = useState('25');
+  const [breakDuration, setBreakDuration] = useState('5');
+  const [namazBreaksEnabled, setNamazBreaksEnabled] = useState(true);
+  const [sleepStart, setSleepStart] = useState('23:00');
+  const [sleepEnd, setSleepEnd] = useState('07:00');
+
+  const handleNext = async () => {
+    if (current < 2) {
+      setCurrent(current + 1);
+    } else {
+      // Save and complete
+      setLoading(true);
+      setError('');
+      try {
+        const res = await api.put<{ success: boolean; user: any }>('/auth/profile', {
+          cgpaTarget: parseFloat(cgpaTarget),
+          semester: parseInt(semester),
+          studyHoursPerDay: parseFloat(studyHoursPerDay),
+          focusDuration: parseInt(focusDuration),
+          breakDuration: parseInt(breakDuration),
+          namazBreaksEnabled,
+          sleepStart,
+          sleepEnd,
+        });
+        if (res.success) {
+          updateUser(res.user);
+          onComplete();
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to save preferences');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const renderSlide = () => {
+    switch (current) {
+      case 0:
+        return (
+          <>
+            <View style={[styles.iconContainer, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="hardware-chip" size={64} color={colors.primary} />
+            </View>
+            <View style={styles.content}>
+              <Text style={styles.title}>Welcome to FocusFlow AI</Text>
+              <Text style={styles.subtitle}>AI-powered smart study planner that adapts to your rhythm</Text>
+            </View>
+          </>
+        );
+      case 1:
+        return (
+          <>
+            <View style={[styles.iconContainer, { backgroundColor: colors.secondary + '20' }]}>
+              <Ionicons name="flag" size={64} color={colors.secondary} />
+            </View>
+            <View style={styles.content}>
+              <Text style={styles.title}>Set Academic Goals</Text>
+              <Text style={styles.subtitle}>Define your CGPA target and study preferences</Text>
+            </View>
+            <View style={styles.form}>
+              <FormInput label="CGPA Target" value={cgpaTarget} onChangeText={setCgpaTarget} keyboardType="decimal-pad" placeholder="3.5" />
+              <FormInput label="Current Semester" value={semester} onChangeText={setSemester} keyboardType="number-pad" placeholder="1" />
+              <FormInput label="Study Hours/Day" value={studyHoursPerDay} onChangeText={setStudyHoursPerDay} keyboardType="decimal-pad" placeholder="6" />
+            </View>
+          </>
+        );
+      case 2:
+        return (
+          <>
+            <View style={[styles.iconContainer, { backgroundColor: colors.accent + '20' }]}>
+              <Ionicons name="time" size={64} color={colors.accent} />
+            </View>
+            <View style={styles.content}>
+              <Text style={styles.title}>Smart Preferences</Text>
+              <Text style={styles.subtitle}>Customize your focus sessions and schedule</Text>
+            </View>
+            <View style={styles.form}>
+              <FormInput label="Focus Duration (min)" value={focusDuration} onChangeText={setFocusDuration} keyboardType="number-pad" placeholder="25" />
+              <FormInput label="Break Duration (min)" value={breakDuration} onChangeText={setBreakDuration} keyboardType="number-pad" placeholder="5" />
+              <ToggleRow label="Enable Namaz Breaks" value={namazBreaksEnabled} onToggle={setNamazBreaksEnabled} />
+              <FormInput label="Sleep Start" value={sleepStart} onChangeText={setSleepStart} placeholder="23:00" />
+              <FormInput label="Sleep End" value={sleepEnd} onChangeText={setSleepEnd} placeholder="07:00" />
+            </View>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.inner}>
-        {/* Icon */}
-        <View style={[styles.iconContainer, { backgroundColor: slide.iconColor + '20' }]}>
-          <Ionicons name={slide.icon} size={64} color={slide.iconColor} />
-        </View>
-
-        {/* Content */}
-        <View style={styles.content}>
-          <Text style={styles.title}>{slide.title}</Text>
-          <Text style={styles.subtitle}>{slide.subtitle}</Text>
-        </View>
-
-        {/* Items */}
-        {slide.items && (
-          <View style={styles.itemsList}>
-            {slide.items.map((item) => (
-              <View key={item.label} style={styles.item}>
-                <Text style={styles.itemLabel}>{item.label}</Text>
-                <Text style={styles.itemValue}>{item.value}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+        {renderSlide()}
 
         {/* Dots */}
         <View style={styles.dots}>
-          {slides.map((_, i) => (
-            <View
-              key={i}
-              style={[styles.dot, i === current && styles.dotActive]}
-            />
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={[styles.dot, i === current && styles.dotActive]} />
           ))}
         </View>
+
+        {/* Error */}
+        {error !== '' && (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle-outline" size={14} color={colors.destructive} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
 
         {/* Buttons */}
         <View style={styles.buttons}>
           {current > 0 && (
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => setCurrent(current - 1)}
-            >
+            <TouchableOpacity style={styles.backBtn} onPress={() => setCurrent(current - 1)} disabled={loading}>
               <Ionicons name="chevron-back" size={20} color={colors.mutedForeground} />
               <Text style={styles.backBtnText}>Back</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity
-            style={[styles.nextBtn, current === 0 && { flex: 1 }]}
-            onPress={() => {
-              if (current < slides.length - 1) {
-                setCurrent(current + 1);
-              } else {
-                onComplete();
-              }
-            }}
-          >
-            <Text style={styles.nextBtnText}>
-              {current < slides.length - 1 ? 'Next' : 'Get Started'}
-            </Text>
-            {current < slides.length - 1 && (
-              <Ionicons name="chevron-forward" size={18} color={colors.white} />
+          <TouchableOpacity style={[styles.nextBtn, current === 0 && { flex: 1 }]} onPress={handleNext} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <>
+                <Text style={styles.nextBtnText}>{current < 2 ? 'Next' : 'Get Started'}</Text>
+                {current < 2 && <Ionicons name="chevron-forward" size={18} color={colors.white} />}
+              </>
             )}
           </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+function FormInput({ label, value, onChangeText, keyboardType, placeholder }: any) {
+  return (
+    <View style={formStyles.row}>
+      <Text style={formStyles.label}>{label}</Text>
+      <TextInput
+        style={formStyles.input}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        placeholder={placeholder}
+        placeholderTextColor={colors.mutedForeground}
+      />
+    </View>
+  );
+}
+
+function ToggleRow({ label, value, onToggle }: any) {
+  return (
+    <View style={formStyles.row}>
+      <Text style={formStyles.label}>{label}</Text>
+      <TouchableOpacity style={[formStyles.toggle, value && formStyles.toggleActive]} onPress={() => onToggle(!value)}>
+        <View style={[formStyles.toggleDot, value && formStyles.toggleDotActive]} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -176,35 +230,15 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     maxWidth: 300,
   },
-  itemsList: {
+  form: {
     width: '100%',
-    gap: 10,
+    gap: spacing.md,
     marginBottom: 32,
-  },
-  item: {
-    backgroundColor: colors.card,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  itemLabel: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-  },
-  itemValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.foreground,
   },
   dots: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   dot: {
     width: 8,
@@ -216,6 +250,18 @@ const styles = StyleSheet.create({
     width: 28,
     backgroundColor: colors.primary,
   },
+  errorBox: {
+    backgroundColor: colors.destructiveDim,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.destructive + '30',
+    marginBottom: 16,
+  },
+  errorText: { fontSize: typography.xs, color: colors.destructive, flex: 1 },
   buttons: {
     flexDirection: 'row',
     gap: 12,
@@ -253,4 +299,48 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '700',
   },
+});
+
+const formStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  label: {
+    fontSize: typography.sm,
+    color: colors.foreground,
+    fontWeight: '500',
+  },
+  input: {
+    backgroundColor: colors.muted,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    fontSize: typography.sm,
+    color: colors.foreground,
+    minWidth: 80,
+    textAlign: 'right',
+  },
+  toggle: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.muted,
+    padding: 2,
+  },
+  toggleActive: { backgroundColor: colors.primary },
+  toggleDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+  },
+  toggleDotActive: { transform: [{ translateX: 20 }] },
 });
