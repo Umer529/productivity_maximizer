@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '../contexts/AuthContext';
 import { scheduleService, ScheduleSlot, ScheduleData } from '../services/scheduleService';
@@ -43,14 +45,15 @@ export default function SchedulerScreen() {
   const [selectedDay, setSelectedDay] = useState(todayIndex);
   const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
 
   const selectedDate = weekDates[selectedDay];
   const dateStr = selectedDate.toISOString().split('T')[0];
   const slots = scheduleData?.slots || [];
 
-  const loadSchedule = useCallback(async (date: string) => {
-    setLoading(true);
+  const loadSchedule = useCallback(async (date: string, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await scheduleService.getSchedule(date, 'ml');
       setScheduleData(res.data);
@@ -73,9 +76,18 @@ export default function SchedulerScreen() {
     }
   };
 
-  useEffect(() => {
-    if (user) loadSchedule(dateStr);
-  }, [dateStr, user, loadSchedule]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadSchedule(dateStr, true);
+    setRefreshing(false);
+  }, [dateStr, loadSchedule]);
+
+  // Reload whenever this tab gains focus (e.g. after adding a new task)
+  useFocusEffect(
+    useCallback(() => {
+      if (user) loadSchedule(dateStr);
+    }, [dateStr, user, loadSchedule]),
+  );
 
   const studySlots = slots.filter((s) => s.type === 'study' || s.type === 'revision');
   const totalStudyHours = studySlots.reduce((sum, s) => sum + s.duration, 0).toFixed(1);
@@ -85,6 +97,9 @@ export default function SchedulerScreen() {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
       >
         {/* ── Header ── */}
         <View style={styles.header}>

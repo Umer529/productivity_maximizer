@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { taskService, Task } from '../services/taskService';
 import { analyticsService, MLPredictions } from '../services/analyticsService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { RootStackParamList, TabParamList } from '../navigation/AppNavigator';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -179,7 +179,7 @@ export default function HomeScreen() {
               icon="calendar-outline"
               label="Schedule"
               color={colors.accent}
-              onPress={() => navigation.navigate('MainTabs')}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Schedule' })}
             />
             <QuickAction
               icon="add-circle-outline"
@@ -191,7 +191,7 @@ export default function HomeScreen() {
               icon="bar-chart-outline"
               label="Analytics"
               color={colors.warning}
-              onPress={() => navigation.navigate('MainTabs')}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Analytics' })}
             />
           </View>
         </View>
@@ -252,19 +252,24 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.taskList}>
               {tasks.map((task) => (
-                <TaskCard
+                <TouchableOpacity
                   key={task._id}
-                  title={task.title}
-                  course={task.course ?? ''}
-                  deadline={new Date(task.deadline).toLocaleDateString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
-                  priority={task.priority}
-                  progress={task.progress}
-                  type={task.type}
-                />
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate('TaskInput', { task })}
+                >
+                  <TaskCard
+                    title={task.title}
+                    course={task.course ?? ''}
+                    deadline={new Date(task.deadline).toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                    priority={task.priority}
+                    progress={task.progress}
+                    type={task.type}
+                  />
+                </TouchableOpacity>
               ))}
             </View>
           )}

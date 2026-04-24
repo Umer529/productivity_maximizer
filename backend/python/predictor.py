@@ -21,7 +21,9 @@ from productivity_core import (
     validate_features
 )
 
-def predict_for_student(student_features, tasks=None, method='all', models_dir='artifacts'):
+def predict_for_student(student_features, tasks=None, method='all', models_dir='artifacts',
+                        study_start_time='08:00', study_end_time='22:00',
+                        namaz_breaks_enabled=True, selected_namaz_prayers=None):
     """
     Make predictions for a student.
     
@@ -83,12 +85,14 @@ def predict_for_student(student_features, tasks=None, method='all', models_dir='
                 available_hours=results.get('required_hours', {}).get('value', 8.0)
             )
             
-            # Generate daily schedule
+            # Generate daily schedule using user's actual study window and prayer prefs
             schedule = scheduler.generate_daily_schedule(
                 user_profile=user_profile,
                 tasks=prioritized_tasks,
-                study_start_time='08:00',
-                study_end_time='22:00'
+                study_start_time=study_start_time,
+                study_end_time=study_end_time,
+                namaz_breaks_enabled=namaz_breaks_enabled,
+                selected_namaz_prayers=selected_namaz_prayers or []
             )
             
             results['schedule'] = schedule
@@ -134,9 +138,15 @@ def main():
         tasks = input_data.get('tasks', [])
         method = input_data.get('method', 'all')
         models_dir = input_data.get('models_dir', 'artifacts')
-        
+        study_start_time = input_data.get('study_start_time', '08:00')
+        study_end_time = input_data.get('study_end_time', '22:00')
+        namaz_breaks_enabled = input_data.get('namaz_breaks_enabled', True)
+        selected_namaz_prayers = input_data.get('selected_namaz_prayers', [])
+
         # Make predictions
-        results = predict_for_student(features, tasks, method, models_dir)
+        results = predict_for_student(features, tasks, method, models_dir,
+                                      study_start_time, study_end_time,
+                                      namaz_breaks_enabled, selected_namaz_prayers)
         
         # Output JSON
         print(json.dumps(results))

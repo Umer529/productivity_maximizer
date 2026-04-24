@@ -297,4 +297,114 @@ module.exports = {
   generateWeeklySchedule,
   getAIInsights,
   estimateTaskEffort,
+  
+  /**
+   * Enhanced schedule generation that uses ML predictions when available.
+   * Falls back to heuristic-based generation if ML is unavailable.
+   */
+  async generateEnhancedSchedule(user, tasks, date, mlPredictions = null) {
+    // If ML predictions are available, use them to enhance the schedule
+    if (mlPredictions && mlPredictions.break_interval) {
+      const enhancedUser = {
+        ...user,
+        breakDuration: Math.ceil(mlPredictions.break_interval.value / 4),
+        longBreakDuration: Math.ceil(mlPredictions.break_interval.value),
+        studyHoursPerDay: mlPredictions.required_hours?.value || user.studyHoursPerDay,
+      };
+      
+      const enhancedTasks = tasks.map(task => {
+        // If ML prioritization is available, update task priority
+        if (mlPredictions.prioritized_tasks) {
+          const mlTask = mlPredictions.prioritized_tasks.find(t => t.name === task.title);
+          if (mlTask) {
+            return {
+              ...task,
+              _mlPriority: mlTask.priority_score,
+              _mlEstimatedHours: mlTask.completion_time || mlTask.estimated_hours,
+            };
+          }
+        }
+        return task;
+      });
+      
+      // Sort tasks by ML priority if available
+      if (mlPredictions.prioritized_tasks) {
+        enhancedTasks.sort((a, b) => {
+          const priorityA = a._mlPriority || 0;
+          const priorityB = b._mlPriority || 0;
+          return priorityB - priorityA;
+        });
+      }
+      
+      return generateStudySchedule(enhancedUser, enhancedTasks, date);
+    }
+    
+    // Fall back to standard schedule generation
+    return generateStudySchedule(user, tasks, date);
+  },
+  
+  /**
+   * Extract ML insights from predictions and user data.
+   */
+  extractMLInsights(mlPredictions, user, tasks) {
+    const insights = [];
+    
+    if (!mlPredictions) return insights;
+    
+    // Productivity insight
+    if (mlPredictions.productivity_score) {
+      const score = mlPredictions.productivity_score.value;
+      const confidence = mlPredictions.productivity_score.confidence;
+      
+      if (score >= 70) {
+        insights.push({
+          type: 'tip',
+          text: `ML Prediction: You're at high productivity level (${score.toFixed(0)}/100). Tackle your hardest tasks now!`,
+          source: 'ml'
+        });
+      } else if (score < 40) {
+        insights.push({
+          type: 'warning',
+          text: `ML Prediction: Your productivity is lower than usual (${score.toFixed(0)}/100). Consider taking breaks and refreshing.`,
+          source: 'ml'
+        });
+      }
+    }
+    
+    // Study hours recommendation
+    if (mlPredictions.required_hours) {
+      const recommendedHours = mlPredictions.required_hours.value;
+      const currentHours = user.studyHoursPerDay || 6;
+      
+      if (Math.abs(recommendedHours - currentHours) > 1) {
+        insights.push({
+          type: 'prediction',
+          text: `ML Recommendation: Adjust study time to ${recommendedHours.toFixed(1)} hours/day for optimal productivity.`,
+          source: 'ml'
+        });
+      }
+    }
+    
+    // Break optimization
+    if (mlPredictions.break_interval) {
+      const optimalBreak = mlPredictions.break_interval.value;
+      insights.push({
+        type: 'tip',
+        text: `ML Optimized: Your ideal focus session is ${optimalBreak.toFixed(0)} minutes with breaks in between.`,
+        source: 'ml'
+      });
+    }
+    
+    // Task prioritization insights
+    if (mlPredictions.prioritized_tasks && mlPredictions.prioritized_tasks.length > 0) {
+      const topTask = mlPredictions.prioritized_tasks[0];
+      insights.push({
+        type: 'prediction',
+        text: `ML Priority: Focus on "${topTask.name}" first (priority: ${topTask.priority_score.toFixed(0)}/100).`,
+        source: 'ml'
+      });
+    }
+    
+    return insights;
+  },
 };

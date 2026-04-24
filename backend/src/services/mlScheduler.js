@@ -46,10 +46,10 @@ class MLScheduler {
   async generateDailySchedule(user, tasks, date = null) {
     // Extract student features from user data
     const features = this._extractStudentFeatures(user);
-    
+
     // Prioritize tasks before sending to ML
     const prioritizedTasks = this._prioritizeTasks(tasks);
-    
+
     // Format tasks for ML
     const mlTasks = prioritizedTasks.map(t => ({
       name: t.title,
@@ -59,9 +59,14 @@ class MLScheduler {
       priority_score: t._priorityScore || 0.5,
       urgency: t._urgency || 'medium'
     }));
-    
-    // Get schedule from ML
-    const result = await this.predictStudent(features, mlTasks, 'schedule');
+
+    // Get schedule from ML — pass user study window and prayer preferences
+    const result = await this._callPythonPredictor(features, mlTasks, 'schedule', {
+      study_start_time:      user.studyStartTime        || '08:00',
+      study_end_time:        user.studyEndTime          || '22:00',
+      namaz_breaks_enabled:  user.namazBreaksEnabled !== false,
+      selected_namaz_prayers: user.selectedNamazPrayers || [],
+    });
     
     if (result.error) {
       throw new Error(result.error);
@@ -186,7 +191,7 @@ class MLScheduler {
    */
   async getProductivityPredictions(user) {
     const features = this._extractStudentFeatures(user);
-    const result = await this.predictStudent(features, null, 'all');
+    const result = await this._callPythonPredictor(features, null, 'all');
 
     if (result.error) {
       throw new Error(result.error);
@@ -267,12 +272,26 @@ class MLScheduler {
   /**
    * Call Python predictor subprocess
    */
-  _callPythonPredictor(features, tasks, method) {
+  _callPythonPredictor(features, tasks, method, extra = {}) {
     return new Promise((resolve, reject) => {
-      const python = spawn('python', [this.pythonScript]);
+      // Try multiple ways to invoke Python
+      let pythonCmd = 'python3';
+      let pythonArgs = [this.pythonScript];
+      
+      // Fallback for Windows systems
+      const isWindows = process.platform === 'win32';
+      if (isWindows) {
+        pythonCmd = 'python';
+      }
+      
+      const python = spawn(pythonCmd, pythonArgs, {
+        cwd: path.dirname(this.pythonScript),
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
       
       let output = '';
       let error = '';
+      let timedOut = false;
       
       python.stdout.on('data', (data) => {
         output += data.toString();
@@ -283,23 +302,30 @@ class MLScheduler {
       });
       
       python.on('close', (code) => {
+        if (timedOut) return;
+        
         if (code === 0) {
           try {
             const result = JSON.parse(output);
-            resolve(result);
+            if (result.error) {
+              reject(new Error(`ML Prediction Error: ${result.error}`));
+            } else {
+              resolve(result);
+            }
           } catch (e) {
             reject(new Error(`Invalid JSON from predictor: ${output}`));
           }
         } else {
           reject(new Error(
-            `Predictor failed (${code}): ${error}`
+            `Predictor failed with code ${code}: ${error || output}`
           ));
         }
       });
       
       python.on('error', (err) => {
+        if (timedOut) return;
         reject(new Error(
-          `Failed to spawn Python process: ${err.message}`
+          `Failed to spawn Python process: ${err.message}. Make sure Python is installed and in PATH.`
         ));
       });
       
@@ -308,16 +334,22 @@ class MLScheduler {
         features: features,
         tasks: tasks || [],
         method: method,
-        models_dir: this.modelsDir
+        models_dir: this.modelsDir,
+        ...extra,
       };
       
-      python.stdin.write(JSON.stringify(inputData));
-      python.stdin.end();
+      try {
+        python.stdin.write(JSON.stringify(inputData));
+        python.stdin.end();
+      } catch (err) {
+        reject(new Error(`Failed to write to Python process: ${err.message}`));
+      }
       
       // Timeout after 30 seconds
       const timeout = setTimeout(() => {
+        timedOut = true;
         python.kill();
-        reject(new Error('Python predictor timeout'));
+        reject(new Error('Python predictor timeout (>30s). Models may be too large or Python process is hanging.'));
       }, 30000);
       
       python.on('close', () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,18 +28,31 @@ export default function AnalyticsScreen() {
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [insights, setInsights] = useState<AIInsight[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
-    Promise.all([analyticsService.getOverview(), analyticsService.getInsights()])
-      .then(([ov, ins]) => {
-        setOverview(ov.data);
-        setInsights(ins.data || []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const [ov, ins] = await Promise.all([
+      analyticsService.getOverview(),
+      analyticsService.getInsights(),
+    ]);
+    setOverview(ov.data);
+    setInsights(ins.data || []);
   }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      setLoading(true);
+      loadData().catch(() => {}).finally(() => setLoading(false));
+    }, [user, loadData]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData().catch(() => {});
+    setRefreshing(false);
+  }, [loadData]);
 
   const focusHours = overview ? (overview.totalFocusMinutes / 60).toFixed(1) : '0.0';
   const weeklyHours = overview?.weeklyHours ?? [0, 0, 0, 0, 0, 0, 0];
@@ -73,6 +86,9 @@ export default function AnalyticsScreen() {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
       >
         {/* ── Header ── */}
         <View>

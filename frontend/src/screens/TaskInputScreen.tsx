@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +23,7 @@ import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'TaskInput'>;
+type RouteType = RouteProp<RootStackParamList, 'TaskInput'>;
 
 const TASK_TYPES = [
   { key: 'assignment', label: 'Assignment', icon: 'document-text-outline' as const },
@@ -52,15 +54,20 @@ function todayPlusDays(n: number) {
 
 export default function TaskInputScreen() {
   const navigation = useNavigation<NavProp>();
+  const route = useRoute<RouteType>();
   const { user } = useAuth();
 
-  const [taskType, setTaskType] = useState<TaskType>('assignment');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [course, setCourse] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [difficulty, setDifficulty] = useState(3);
-  const [duration, setDuration] = useState(120);
+  // If a task was passed via route params, we're in edit mode
+  const existingTask = route.params?.task;
+  const isEditMode = Boolean(existingTask);
+
+  const [taskType, setTaskType] = useState<TaskType>((existingTask?.type as TaskType) || 'assignment');
+  const [title, setTitle] = useState(existingTask?.title || '');
+  const [description, setDescription] = useState(existingTask?.description || '');
+  const [course, setCourse] = useState(existingTask?.course || '');
+  const [deadline, setDeadline] = useState(existingTask?.deadline?.split('T')[0] || '');
+  const [difficulty, setDifficulty] = useState(existingTask?.difficulty || 3);
+  const [duration, setDuration] = useState(existingTask?.estimatedDuration || 120);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -74,40 +81,52 @@ export default function TaskInputScreen() {
     priority: difficulty >= 4 ? 'High' : difficulty >= 3 ? 'Medium' : 'Low',
   };
 
-  // Get ML-based task analysis when task details change
-  useEffect(() => {
-    if (user && title && deadline) {
-      analyzeTaskWithML();
-    }
-  }, [title, deadline, difficulty, duration, taskType]);
-
-  const analyzeTaskWithML = async () => {
+  const analyzeTaskWithML = useCallback(async () => {
     if (!user || !title) return;
-    
     setAnalyzing(true);
     try {
-      const taskData = {
+      const result = await mlService.analyzeTasks([{
         title,
         deadline,
         difficulty,
         estimated_hours: duration / 60,
         type: taskType,
-      };
-      
-      const result = await mlService.analyzeTasks([taskData]);
+      }]);
       if (result.success && result.data.prioritized_tasks?.length > 0) {
         setMlAnalysis(result.data.prioritized_tasks[0]);
       }
-    } catch (err) {
-      // ML analysis failed, fall back to heuristic
+    } catch {
       setMlAnalysis(null);
     } finally {
       setAnalyzing(false);
     }
+  }, [user, title, deadline, difficulty, duration, taskType]);
+
+  useEffect(() => {
+    if (user && title && deadline) analyzeTaskWithML();
+  }, [title, deadline, difficulty, duration, taskType, analyzeTaskWithML]);
+
+  const handleDelete = () => {
+    if (!existingTask) return;
+    Alert.alert('Delete Task', `Delete "${existingTask.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await taskService.deleteTask(existingTask._id);
+            navigation.goBack();
+          } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to delete task');
+          }
+        },
+      },
+    ]);
   };
 
   const handleSubmit = async () => {
-    if (!user) { setError('Please sign in to create tasks.'); return; }
+    if (!user) { setError('Please sign in to manage tasks.'); return; }
     if (!title.trim()) { setError('Task title is required.'); return; }
     if (!deadline) { setError('Deadline is required (YYYY-MM-DD).'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
@@ -117,19 +136,31 @@ export default function TaskInputScreen() {
     setLoading(true);
     setError('');
     try {
-      await taskService.createTask({
-        title: title.trim(),
-        description: description.trim() || undefined,
-        type: taskType,
-        course: course.trim() || undefined,
-        deadline,
-        difficulty,
-        estimatedDuration: duration,
-      });
+      if (isEditMode && existingTask) {
+        await taskService.updateTask(existingTask._id, {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          type: taskType,
+          course: course.trim() || undefined,
+          deadline,
+          difficulty,
+          estimatedDuration: duration,
+        });
+      } else {
+        await taskService.createTask({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          type: taskType,
+          course: course.trim() || undefined,
+          deadline,
+          difficulty,
+          estimatedDuration: duration,
+        });
+      }
       setSuccess(true);
       setTimeout(() => navigation.goBack(), 900);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create task');
+      setError(err instanceof Error ? err.message : `Failed to ${isEditMode ? 'update' : 'create'} task`);
     } finally {
       setLoading(false);
     }
@@ -151,8 +182,14 @@ export default function TaskInputScreen() {
             <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
               <Ionicons name="close" size={20} color={colors.mutedForeground} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>New Task</Text>
-            <View style={{ width: 40 }} />
+            <Text style={styles.headerTitle}>{isEditMode ? 'Edit Task' : 'New Task'}</Text>
+            {isEditMode ? (
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 40 }} />
+            )}
           </View>
 
           {/* ── Task Type ── */}
@@ -367,12 +404,14 @@ export default function TaskInputScreen() {
             ) : (
               <>
                 <Ionicons
-                  name={success ? 'checkmark' : 'add-circle-outline'}
+                  name={success ? 'checkmark' : isEditMode ? 'save-outline' : 'add-circle-outline'}
                   size={20}
                   color={colors.white}
                 />
                 <Text style={styles.submitBtnText}>
-                  {success ? 'Task Created!' : 'Create Task'}
+                  {success
+                    ? (isEditMode ? 'Task Updated!' : 'Task Created!')
+                    : (isEditMode ? 'Save Changes' : 'Create Task')}
                 </Text>
               </>
             )}
@@ -407,6 +446,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.cardBorder,
+  },
+  deleteBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.destructiveDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.destructive + '30',
   },
   headerTitle: { fontSize: typography.lg, fontWeight: '800', color: colors.foreground },
 

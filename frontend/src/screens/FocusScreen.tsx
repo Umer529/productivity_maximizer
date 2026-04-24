@@ -7,6 +7,7 @@ import {
   Animated,
   Easing,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,6 +50,8 @@ export default function FocusScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showTaskPicker, setShowTaskPicker] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [taskProgress, setTaskProgress] = useState(50);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -125,32 +128,56 @@ export default function FocusScreen() {
           const res = await focusSessionService.startSession({
             plannedDuration,
             sessionType,
+            taskId: selectedTask?._id,
           });
           setActiveSession(res.data);
         } catch {
-          // proceed with local timer
+          // proceed with local timer even if backend call fails
         }
       }
       setIsRunning(true);
     } else {
       setIsRunning(false);
     }
-  }, [isRunning, user, activeSession, plannedDuration, sessionType]);
+  }, [isRunning, user, activeSession, plannedDuration, sessionType, selectedTask]);
 
   const handleEndSession = useCallback(async (completed = false) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
+    if (completed && selectedTask) {
+      // Show progress modal so user can log how much they completed
+      setShowCompletionModal(true);
+      return;
+    }
+    // Interrupted or no task – end session and go back immediately
     if (user && activeSession) {
       try {
         await focusSessionService.endSession(activeSession._id, {
           interrupted: !completed,
+          completed,
         });
       } catch {
         // ignore
       }
     }
     navigation.goBack();
-  }, [user, activeSession, navigation]);
+  }, [user, activeSession, navigation, selectedTask, setShowCompletionModal]);
+
+  const handleConfirmCompletion = useCallback(async () => {
+    setShowCompletionModal(false);
+    if (user && activeSession) {
+      try {
+        await focusSessionService.endSession(activeSession._id, {
+          completed: true,
+          interrupted: false,
+          taskProgress,
+        });
+      } catch {
+        // ignore
+      }
+    }
+    navigation.goBack();
+  }, [user, activeSession, taskProgress, navigation, setShowCompletionModal]);
 
   const handleReset = () => {
     setIsRunning(false);
@@ -388,6 +415,60 @@ export default function FocusScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* ── Session Completion Modal ── */}
+      <Modal
+        visible={showCompletionModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCompletionModal(false)}
+      >
+        <View style={completionStyles.overlay}>
+          <View style={completionStyles.card}>
+            <View style={completionStyles.iconBox}>
+              <Ionicons name="checkmark-circle" size={40} color={colors.success} />
+            </View>
+            <Text style={completionStyles.title}>Session Complete!</Text>
+            <Text style={completionStyles.sub}>
+              Great work on "{selectedTask?.title}"!{'\n'}How much of the task did you complete?
+            </Text>
+
+            {/* Progress slider as step buttons */}
+            <View style={completionStyles.progressRow}>
+              {[0, 25, 50, 75, 100].map((pct) => (
+                <TouchableOpacity
+                  key={pct}
+                  style={[
+                    completionStyles.progressBtn,
+                    taskProgress === pct && completionStyles.progressBtnActive,
+                  ]}
+                  onPress={() => setTaskProgress(pct)}
+                >
+                  <Text
+                    style={[
+                      completionStyles.progressBtnText,
+                      taskProgress === pct && completionStyles.progressBtnTextActive,
+                    ]}
+                  >
+                    {pct}%
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={completionStyles.doneBtn} onPress={handleConfirmCompletion}>
+              <Ionicons name="checkmark" size={18} color={colors.white} />
+              <Text style={completionStyles.doneBtnText}>Save & Finish</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={completionStyles.skipBtn}
+              onPress={() => { setShowCompletionModal(false); navigation.goBack(); }}
+            >
+              <Text style={completionStyles.skipBtnText}>Skip</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -661,4 +742,68 @@ const pillStyles = StyleSheet.create({
     borderWidth: 1,
   },
   text: { fontSize: typography.xs, color: colors.mutedForeground, fontWeight: '600' },
+});
+
+const completionStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  card: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.xxxl,
+    alignItems: 'center',
+    gap: spacing.lg,
+    borderTopWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  iconBox: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.xl,
+    backgroundColor: colors.secondaryDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  title: { fontSize: typography.xl, fontWeight: '800', color: colors.foreground },
+  sub: {
+    fontSize: typography.sm,
+    color: colors.mutedForeground,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  progressRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+  progressBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  progressBtnActive: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary + '60',
+  },
+  progressBtnText: { fontSize: typography.xs, fontWeight: '700', color: colors.mutedForeground },
+  progressBtnTextActive: { color: colors.primaryLight },
+  doneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    width: '100%',
+    height: 52,
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  doneBtnText: { fontSize: typography.base, fontWeight: '700', color: colors.white },
+  skipBtn: { paddingVertical: spacing.sm },
+  skipBtnText: { fontSize: typography.sm, color: colors.mutedForeground },
 });

@@ -279,17 +279,18 @@ class IntelligentScheduler:
                     })
                     current_minutes += break_duration
 
-        # Insert prayer breaks (simplified logic)
+        # Insert prayer breaks at their proper times
         for prayer in prayer_breaks:
             schedule.append({
                 'type': 'prayer_break',
                 'task': prayer['prayer_name'],
                 'prayer': prayer['prayer_name'],
+                'start_time': prayer.get('time', '12:00'),
                 'duration': prayer['duration'],
                 'activity': 'namaz'
             })
 
-        return sorted(schedule, key=lambda x: x.get('start_time', '00:00'))
+        return sorted(schedule, key=lambda x: x.get('start_time', '23:59'))
 
     def _distribute_tasks_weekly(
         self,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing } from '../lib/theme';
+import { Task } from '../services/taskService';
 
 import OnboardingScreen from '../screens/OnboardingScreen';
 import AuthScreen from '../screens/AuthScreen';
@@ -19,20 +20,20 @@ import ProfileScreen from '../screens/ProfileScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import TaskInputScreen from '../screens/TaskInputScreen';
 
-export type RootStackParamList = {
-  Onboarding: undefined;
-  Auth: undefined;
-  MainTabs: undefined;
-  TaskInput: undefined;
-  Focus: undefined;
-  ProfileSettings: undefined;
-};
-
 export type TabParamList = {
   Home: undefined;
   Schedule: undefined;
   Analytics: undefined;
   Profile: undefined;
+};
+
+export type RootStackParamList = {
+  Onboarding: undefined;
+  Auth: undefined;
+  MainTabs: NavigatorScreenParams<TabParamList> | undefined;
+  TaskInput: { task?: Task } | undefined;
+  Focus: undefined;
+  ProfileSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();

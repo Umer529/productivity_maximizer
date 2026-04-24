@@ -28,7 +28,7 @@ export const focusSessionService = {
 
   endSession: async (
     id: string,
-    payload: { taskProgress?: number; notes?: string; interrupted?: boolean },
+    payload: { taskProgress?: number; notes?: string; interrupted?: boolean; completed?: boolean },
   ): Promise<{ success: boolean; data: FocusSession }> => {
     return api.put(`/focus-sessions/${id}/end`, payload);
   },

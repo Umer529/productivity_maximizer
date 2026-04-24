@@ -23,8 +23,9 @@ function sendTokenResponse(user, statusCode, res) {
         breakDuration:       user.breakDuration,
         longBreakDuration:   user.longBreakDuration,
         longBreakAfter:      user.longBreakAfter,
-        namazBreaksEnabled:  user.namazBreaksEnabled,
-        sleepStart:          user.sleepStart,
+        namazBreaksEnabled:   user.namazBreaksEnabled,
+        selectedNamazPrayers: user.selectedNamazPrayers || [],
+        sleepStart:           user.sleepStart,
         sleepEnd:            user.sleepEnd,
         studyStartTime:      user.studyStartTime,
         studyEndTime:        user.studyEndTime,
@@ -116,6 +117,7 @@ exports.updateProfile = async (req, res, next) => {
       longBreakDuration,
       longBreakAfter,
       namazBreaksEnabled,
+      selectedNamazPrayers,
       sleepStart,
       sleepEnd,
       studyStartTime,
@@ -158,6 +160,7 @@ exports.updateProfile = async (req, res, next) => {
     if (longBreakDuration !== undefined) updateFields.longBreakDuration = longBreakDuration;
     if (longBreakAfter !== undefined) updateFields.longBreakAfter = longBreakAfter;
     if (namazBreaksEnabled !== undefined) updateFields.namazBreaksEnabled = namazBreaksEnabled;
+    if (selectedNamazPrayers !== undefined) updateFields.selectedNamazPrayers = selectedNamazPrayers;
     if (sleepStart !== undefined) updateFields.sleepStart = sleepStart;
     if (sleepEnd !== undefined) updateFields.sleepEnd = sleepEnd;
     if (studyStartTime !== undefined) updateFields.studyStartTime = studyStartTime;
