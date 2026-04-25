@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useAppData } from '../contexts/AppDataContext';
 import { taskService, Task } from '../services/taskService';
-import { analyticsService, MLPredictions } from '../services/analyticsService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList, TabParamList } from '../navigation/AppNavigator';
 
@@ -33,54 +33,53 @@ const QUOTES = [
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
   const { user } = useAuth();
+  const { tasks: allTasks, analyticsOverview, aiInsights, loadTasks, loadAnalytics, invalidateTaskCache } = useAppData();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const quote = QUOTES[new Date().getDay() % QUOTES.length];
 
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [focusScore, setFocusScore] = useState(0);
-  const [totalMinutes, setTotalMinutes] = useState(0);
-  const [weeklyHours, setWeeklyHours] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
-  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
-  const [mlPredictions, setMlPredictions] = useState<MLPredictions | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadData = useCallback(async () => {
+  // Derive display data from cached context
+  const activeTasks = allTasks
+    .filter((t) => t.status === 'pending' || t.status === 'in_progress')
+    .slice(0, 4);
+  const focusScore = analyticsOverview?.focusScore ?? 0;
+  const totalMinutes = analyticsOverview?.totalFocusMinutes ?? 0;
+  const weeklyHours = analyticsOverview?.weeklyHours ?? [0, 0, 0, 0, 0, 0, 0];
+  const mlPredictions = analyticsOverview?.mlPredictions ?? null;
+  const mlInsight = aiInsights.find((i) => i.text.includes('ML Prediction') || i.text.includes('ML Recommendation'));
+  const tip = aiInsights.find((i) => i.type === 'tip');
+  const aiSuggestion = mlInsight?.text || tip?.text || null;
+
+  const loadData = useCallback(async (force = false) => {
     if (!user) return;
-    try {
-      const [taskRes, overviewRes, insightsRes] = await Promise.all([
-        taskService.getTasks({ status: 'pending' }),
-        analyticsService.getOverview(),
-        analyticsService.getInsights(),
-      ]);
-      setTasks(taskRes.data.slice(0, 4));
-      setFocusScore(overviewRes.data.focusScore);
-      setTotalMinutes(overviewRes.data.totalFocusMinutes);
-      setWeeklyHours(overviewRes.data.weeklyHours ?? []);
-      setMlPredictions(overviewRes.data.mlPredictions || null);
-      
-      // Prioritize ML-based insights, fall back to tips
-      const mlInsight = insightsRes.data.find((i) => i.text.includes('ML Prediction') || i.text.includes('ML Recommendation'));
-      const tip = insightsRes.data.find((i) => i.type === 'tip');
-      setAiSuggestion(mlInsight?.text || tip?.text || null);
-    } catch {
-      // silent
-    }
-  }, [user]);
+    await Promise.all([loadTasks(force), loadAnalytics(force)]);
+  }, [user, loadTasks, loadAnalytics]);
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      loadData().finally(() => setLoading(false));
-    }, [loadData]),
+      if (!analyticsOverview && !loading) setLoading(true);
+      loadData(false).finally(() => setLoading(false));
+    }, [loadData]), // intentionally omit analyticsOverview/loading to avoid re-trigger loops
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
+
+  const handleMarkComplete = useCallback(async (task: Task) => {
+    try {
+      await taskService.updateProgress(task._id, 100);
+      invalidateTaskCache();
+      await loadTasks(true);
+    } catch {
+      // silent
+    }
+  }, [invalidateTaskCache, loadTasks]);
 
   const streak = user?.streak ?? 0;
   const focusTime =
@@ -88,8 +87,7 @@ export default function HomeScreen() {
       ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`
       : `${totalMinutes}m`;
   const maxH = Math.max(...weeklyHours, 1);
-  
-  // Use ML productivity score if available, otherwise use focus score
+
   const productivityScore = mlPredictions?.productivity_score?.value ?? focusScore;
   const recommendedHours = mlPredictions?.required_hours?.value ?? 6;
 
@@ -160,7 +158,7 @@ export default function HomeScreen() {
             <StatItem
               icon="checkmark-circle-outline"
               label="Pending"
-              value={`${tasks.length}`}
+              value={`${activeTasks.length}`}
             />
           </View>
         </View>
@@ -229,7 +227,7 @@ export default function HomeScreen() {
             <View style={styles.loadingBox}>
               <ActivityIndicator color={colors.primary} />
             </View>
-          ) : tasks.length === 0 ? (
+          ) : activeTasks.length === 0 ? (
             <View style={styles.emptyCard}>
               <View style={styles.emptyIconBox}>
                 <Ionicons name="book-outline" size={28} color={colors.mutedForeground} />
@@ -251,7 +249,7 @@ export default function HomeScreen() {
             </View>
           ) : (
             <View style={styles.taskList}>
-              {tasks.map((task) => (
+              {activeTasks.map((task) => (
                 <TouchableOpacity
                   key={task._id}
                   activeOpacity={0.8}
@@ -268,6 +266,10 @@ export default function HomeScreen() {
                     priority={task.priority}
                     progress={task.progress}
                     type={task.type}
+                    actualDuration={task.actualDuration}
+                    estimatedDuration={task.estimatedDuration}
+                    status={task.status}
+                    onComplete={() => handleMarkComplete(task)}
                   />
                 </TouchableOpacity>
               ))}
@@ -391,6 +393,10 @@ function TaskCard({
   priority,
   progress,
   type,
+  actualDuration,
+  estimatedDuration,
+  status,
+  onComplete,
 }: {
   title: string;
   course: string;
@@ -398,9 +404,17 @@ function TaskCard({
   priority: string;
   progress: number;
   type: string;
+  actualDuration?: number;
+  estimatedDuration?: number;
+  status?: string;
+  onComplete?: () => void;
 }) {
   const pColor = PRIORITY_COLORS[priority] ?? colors.mutedForeground;
   const tIcon = TYPE_ICONS[type] ?? 'document-outline';
+  const spentH = actualDuration ? +(actualDuration / 60).toFixed(1) : 0;
+  const estH = estimatedDuration ? +(estimatedDuration / 60).toFixed(1) : 0;
+  const showTime = spentH > 0 && estH > 0;
+
   return (
     <View style={taskStyles.card}>
       <View style={taskStyles.row}>
@@ -413,10 +427,21 @@ function TaskCard({
             {course ? `${course}  ·  ` : ''}{deadline}
           </Text>
         </View>
-        <View style={[taskStyles.priorityBadge, { backgroundColor: pColor + '18' }]}>
-          <Text style={[taskStyles.priorityText, { color: pColor }]}>
-            {priority.toUpperCase()}
-          </Text>
+        <View style={taskStyles.rightColumn}>
+          <View style={[taskStyles.priorityBadge, { backgroundColor: pColor + '18' }]}>
+            <Text style={[taskStyles.priorityText, { color: pColor }]}>
+              {priority.toUpperCase()}
+            </Text>
+          </View>
+          {status !== 'completed' && onComplete && (
+            <TouchableOpacity
+              style={taskStyles.completeBtn}
+              onPress={(e) => { e.stopPropagation(); onComplete(); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
       <View style={taskStyles.progressRow}>
@@ -425,6 +450,11 @@ function TaskCard({
         </View>
         <Text style={taskStyles.progressPct}>{progress}%</Text>
       </View>
+      {showTime && (
+        <Text style={taskStyles.timeSpent}>
+          {spentH}h spent · {estH}h estimated
+        </Text>
+      )}
     </View>
   );
 }
@@ -700,14 +730,17 @@ const taskStyles = StyleSheet.create({
   info: { flex: 1, gap: 3 },
   title: { fontSize: typography.base, fontWeight: '600', color: colors.foreground },
   sub: { fontSize: typography.xs, color: colors.mutedForeground },
+  rightColumn: { alignItems: 'flex-end', gap: spacing.xs },
   priorityBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 3,
     borderRadius: radius.full,
   },
   priorityText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  completeBtn: { padding: 2 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   progressBg: { flex: 1, height: 5, backgroundColor: colors.muted, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: radius.full },
   progressPct: { fontSize: 10, color: colors.mutedForeground, width: 28, textAlign: 'right' },
+  timeSpent: { fontSize: typography.xs, color: colors.mutedForeground },
 });

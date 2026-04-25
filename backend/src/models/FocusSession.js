@@ -1,5 +1,15 @@
 const db = require('../config/database');
 
+// SQLite datetime('now') returns 'YYYY-MM-DD HH:MM:SS' in UTC with no timezone designator.
+// JS Date() treats strings without a designator as local time, causing duration calculations
+// to be off by the server's UTC offset (e.g., +5h for Pakistan = 300-minute error).
+// Appending 'Z' forces correct UTC parsing.
+function normalizeDateTime(dt) {
+  if (!dt) return null;
+  if (dt.includes('T')) return dt.endsWith('Z') ? dt : dt + 'Z';
+  return dt.replace(' ', 'T') + 'Z';
+}
+
 function rowToSession(row) {
   if (!row) return null;
   return {
@@ -8,8 +18,8 @@ function rowToSession(row) {
     userId:            row.user_id,
     taskId:            row.task_id || null,
     taskTitle:         row.task_title || null,
-    startTime:         row.start_time,
-    endTime:           row.end_time || null,
+    startTime:         normalizeDateTime(row.start_time),
+    endTime:           row.end_time ? normalizeDateTime(row.end_time) : null,
     plannedDuration:   row.planned_duration,
     actualDuration:    row.actual_duration || null,
     completed:         row.completed === 1,
@@ -17,8 +27,8 @@ function rowToSession(row) {
     interruptionCount: row.interruption_count,
     sessionType:       row.session_type,
     notes:             row.notes || null,
-    createdAt:         row.created_at,
-    updatedAt:         row.updated_at,
+    createdAt:         normalizeDateTime(row.created_at),
+    updatedAt:         normalizeDateTime(row.updated_at),
   };
 }
 

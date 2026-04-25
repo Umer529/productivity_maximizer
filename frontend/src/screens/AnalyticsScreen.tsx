@@ -14,7 +14,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
-import { analyticsService, AIInsight, MLPredictions, AnalyticsOverview } from '../services/analyticsService';
+import { useAppData } from '../contexts/AppDataContext';
+import { AIInsight, MLPredictions, AnalyticsOverview } from '../services/analyticsService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -24,35 +25,25 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function AnalyticsScreen() {
   const { user } = useAuth();
+  const { analyticsOverview: overview, aiInsights: insights, loadAnalytics } = useAppData();
   const navigation = useNavigation<NavProp>();
-  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
-  const [insights, setInsights] = useState<AIInsight[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-  const loadData = useCallback(async () => {
-    if (!user) return;
-    const [ov, ins] = await Promise.all([
-      analyticsService.getOverview(),
-      analyticsService.getInsights(),
-    ]);
-    setOverview(ov.data);
-    setInsights(ins.data || []);
-  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
-      setLoading(true);
-      loadData().catch(() => {}).finally(() => setLoading(false));
-    }, [user, loadData]),
+      // Only show spinner when there's no data yet; cache hits are instant
+      if (!overview) setLoading(true);
+      loadAnalytics(false).finally(() => setLoading(false));
+    }, [user, loadAnalytics]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData().catch(() => {});
+    await loadAnalytics(true);
     setRefreshing(false);
-  }, [loadData]);
+  }, [loadAnalytics]);
 
   const focusHours = overview ? (overview.totalFocusMinutes / 60).toFixed(1) : '0.0';
   const weeklyHours = overview?.weeklyHours ?? [0, 0, 0, 0, 0, 0, 0];

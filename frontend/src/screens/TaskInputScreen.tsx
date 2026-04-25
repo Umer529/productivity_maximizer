@@ -17,6 +17,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useAppData } from '../contexts/AppDataContext';
 import { taskService } from '../services/taskService';
 import { mlService } from '../services/mlService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
@@ -56,6 +57,7 @@ export default function TaskInputScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const { user } = useAuth();
+  const { invalidateTaskCache, invalidateAnalyticsCache } = useAppData();
 
   // If a task was passed via route params, we're in edit mode
   const existingTask = route.params?.task;
@@ -116,6 +118,8 @@ export default function TaskInputScreen() {
         onPress: async () => {
           try {
             await taskService.deleteTask(existingTask._id);
+            invalidateTaskCache();
+            invalidateAnalyticsCache();
             navigation.goBack();
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Failed to delete task');
@@ -157,6 +161,8 @@ export default function TaskInputScreen() {
           estimatedDuration: duration,
         });
       }
+      invalidateTaskCache();
+      invalidateAnalyticsCache();
       setSuccess(true);
       setTimeout(() => navigation.goBack(), 900);
     } catch (err: unknown) {

@@ -50,7 +50,13 @@ exports.endSession = (req, res, next) => {
     if (existing.endTime) return res.status(400).json({ success: false, message: 'Session already ended' });
 
     const now = new Date();
-    const actualDuration = Math.round((now - new Date(existing.startTime)) / (1000 * 60));
+    const serverDuration = Math.max(1, Math.round((now - new Date(existing.startTime)) / (1000 * 60)));
+
+    // Prefer client-provided duration (excludes pauses), validate against server wall-clock time
+    const clientDuration = req.body.actualDuration ? Number(req.body.actualDuration) : null;
+    const actualDuration = (clientDuration && clientDuration > 0 && clientDuration <= serverDuration + 5)
+      ? clientDuration
+      : serverDuration;
 
     const session = FocusSession.end(sessionId, req.user.id, {
       actualDuration,
@@ -86,13 +92,26 @@ exports.endSession = (req, res, next) => {
       timeEfficiency: avgEfficiency,
     });
 
-    // Update task progress if provided
-    if (session.taskId && req.body.taskProgress !== undefined) {
+    // Update task: accumulate actual time and recalculate progress
+    if (session.taskId) {
       let task = Task.findById(session.taskId, req.user.id);
       if (task) {
-        task.progress = Math.min(100, Math.max(0, Number(req.body.taskProgress)));
         task.actualDuration = (task.actualDuration || 0) + actualDuration;
-        if (task.progress === 100) task.status = 'completed';
+
+        // Primary: auto-calculate progress from time spent vs estimated
+        const timeBasedProgress = task.estimatedDuration > 0
+          ? Math.min(100, Math.round((task.actualDuration / task.estimatedDuration) * 100))
+          : 0;
+
+        // Allow manual override (completion modal) to set higher progress
+        if (req.body.taskProgress !== undefined) {
+          task.progress = Math.min(100, Math.max(timeBasedProgress, Number(req.body.taskProgress)));
+        } else {
+          task.progress = Math.max(task.progress || 0, timeBasedProgress);
+        }
+
+        if (task.progress >= 100) task.status = 'completed';
+        else if (task.status === 'pending') task.status = 'in_progress';
         Task.save(task);
       }
     }

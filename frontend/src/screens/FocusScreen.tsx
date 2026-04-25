@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useAppData } from '../contexts/AppDataContext';
 import { focusSessionService, FocusSession } from '../services/focusSessionService';
 import { taskService, Task } from '../services/taskService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
@@ -38,6 +39,7 @@ const AMBIENT = [
 export default function FocusScreen() {
   const navigation = useNavigation<NavProp>();
   const { user } = useAuth();
+  const { invalidateTaskCache, invalidateAnalyticsCache } = useAppData();
   const plannedDuration = user?.preferences?.focusDuration ?? 25;
   const totalSeconds = plannedDuration * 60;
 
@@ -53,6 +55,8 @@ export default function FocusScreen() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [taskProgress, setTaskProgress] = useState(50);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks actual focused seconds (pauses excluded) for accurate duration reporting
+  const elapsedSecondsRef = useRef(0);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
@@ -76,7 +80,10 @@ export default function FocusScreen() {
 
   useEffect(() => {
     if (isRunning && seconds > 0) {
-      intervalRef.current = setInterval(() => setSeconds((s) => s - 1), 1000);
+      intervalRef.current = setInterval(() => {
+        setSeconds((s) => s - 1);
+        elapsedSecondsRef.current += 1;
+      }, 1000);
     } else if (seconds === 0 && isRunning) {
       setIsRunning(false);
       setCompletedSessions((c) => c + 1);
@@ -124,6 +131,7 @@ export default function FocusScreen() {
   const handleToggle = useCallback(async () => {
     if (!isRunning) {
       if (user && !activeSession) {
+        elapsedSecondsRef.current = 0;
         try {
           const res = await focusSessionService.startSession({
             plannedDuration,
@@ -145,43 +153,50 @@ export default function FocusScreen() {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
     if (completed && selectedTask) {
-      // Show progress modal so user can log how much they completed
       setShowCompletionModal(true);
       return;
     }
-    // Interrupted or no task – end session and go back immediately
     if (user && activeSession) {
+      const actualDuration = Math.max(1, Math.round(elapsedSecondsRef.current / 60));
       try {
         await focusSessionService.endSession(activeSession._id, {
           interrupted: !completed,
           completed,
+          actualDuration,
         });
       } catch {
         // ignore
       }
+      invalidateTaskCache();
+      invalidateAnalyticsCache();
     }
     navigation.goBack();
-  }, [user, activeSession, navigation, selectedTask, setShowCompletionModal]);
+  }, [user, activeSession, navigation, selectedTask, invalidateTaskCache, invalidateAnalyticsCache]);
 
   const handleConfirmCompletion = useCallback(async () => {
     setShowCompletionModal(false);
     if (user && activeSession) {
+      const actualDuration = Math.max(1, Math.round(elapsedSecondsRef.current / 60));
       try {
         await focusSessionService.endSession(activeSession._id, {
           completed: true,
           interrupted: false,
           taskProgress,
+          actualDuration,
         });
       } catch {
         // ignore
       }
+      invalidateTaskCache();
+      invalidateAnalyticsCache();
     }
     navigation.goBack();
-  }, [user, activeSession, taskProgress, navigation, setShowCompletionModal]);
+  }, [user, activeSession, taskProgress, navigation, invalidateTaskCache, invalidateAnalyticsCache]);
 
   const handleReset = () => {
     setIsRunning(false);
     setSeconds(totalSeconds);
+    elapsedSecondsRef.current = 0;
   };
 
   const progress = (totalSeconds - seconds) / totalSeconds;
