@@ -40,10 +40,11 @@ export default function HomeScreen() {
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [completingIds, setCompletingIds] = useState<Set<string | number>>(new Set());
 
-  // Derive display data from cached context
+  // Derive display data from cached context; exclude tasks already optimistically completed
   const activeTasks = allTasks
-    .filter((t) => t.status === 'pending' || t.status === 'in_progress')
+    .filter((t) => (t.status === 'pending' || t.status === 'in_progress') && !completingIds.has(t._id))
     .slice(0, 4);
   const focusScore = analyticsOverview?.focusScore ?? 0;
   const totalMinutes = analyticsOverview?.totalFocusMinutes ?? 0;
@@ -72,12 +73,15 @@ export default function HomeScreen() {
   }, [loadData]);
 
   const handleMarkComplete = useCallback(async (task: Task) => {
+    // Optimistically remove from list before API responds
+    setCompletingIds((prev) => new Set(prev).add(task._id));
     try {
       await taskService.updateProgress(task._id, 100);
       invalidateTaskCache();
-      await loadTasks(true);
+      loadTasks(true);
     } catch {
-      // silent
+      // Revert optimistic removal on failure
+      setCompletingIds((prev) => { const s = new Set(prev); s.delete(task._id); return s; });
     }
   }, [invalidateTaskCache, loadTasks]);
 
@@ -253,7 +257,7 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   key={task._id}
                   activeOpacity={0.8}
-                  onPress={() => navigation.navigate('TaskInput', { task })}
+                  onPress={() => navigation.navigate('TaskDetail', { task })}
                 >
                   <TaskCard
                     title={task.title}

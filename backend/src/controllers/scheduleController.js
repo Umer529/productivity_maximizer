@@ -2,11 +2,24 @@ const Task        = require('../models/Task');
 const aiScheduler = require('../services/aiSchedulerService');
 const mlScheduler  = require('../services/mlScheduler');
 
+// Returns today's ISO date string (YYYY-MM-DD) in local server time
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Clamp a date string to today if it's in the past
+function clampToToday(dateStr) {
+  const today = todayStr();
+  return dateStr < today ? today : dateStr;
+}
+
 // GET /api/v1/schedule?date=YYYY-MM-DD&method=ml|heuristic
 exports.getSchedule = async (req, res, next) => {
   try {
-    const dateStr = req.query.date || new Date().toISOString().split('T')[0];
+    const rawDate = req.query.date || todayStr();
     const method = req.query.method || 'ml';
+    const dateStr = clampToToday(rawDate); // silently redirect past dates → today
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format. Use YYYY-MM-DD' });
@@ -64,8 +77,9 @@ exports.getWeeklySchedule = async (req, res, next) => {
 // POST /api/v1/schedule/regenerate
 exports.regenerateSchedule = async (req, res, next) => {
   try {
-    const dateStr = req.body.date || new Date().toISOString().split('T')[0];
+    const rawDate = req.body.date || todayStr();
     const method = req.body.method || 'ml';
+    const dateStr = clampToToday(rawDate); // silently redirect past dates → today
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) {
       return res.status(400).json({ success: false, message: 'Invalid date format. Use YYYY-MM-DD' });

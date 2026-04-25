@@ -30,6 +30,14 @@ function getWeekDates() {
   });
 }
 
+function isPastDate(date: Date): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d < today;
+}
+
 const TYPE_CONFIG: Record<string, { bg: string; text: string; dot: string; icon: keyof typeof Ionicons.glyphMap }> = {
   study:    { bg: colors.primaryDim,    text: colors.primaryLight, dot: colors.primary,  icon: 'book-outline' },
   revision: { bg: colors.accentDim,     text: colors.accent,       dot: colors.accent,   icon: 'refresh-circle-outline' },
@@ -151,22 +159,32 @@ export default function SchedulerScreen() {
           {DAYS.map((d, i) => {
             const isToday = i === todayIndex;
             const isSelected = i === selectedDay;
+            const isPast = isPastDate(weekDates[i]);
             return (
               <TouchableOpacity
                 key={d + i}
                 style={[
                   styles.dayBtn,
                   isSelected && styles.dayBtnActive,
+                  isPast && styles.dayBtnPast,
                 ]}
-                onPress={() => setSelectedDay(i)}
+                onPress={() => {
+                  if (isPast) {
+                    // Redirect to today instead of showing a past schedule
+                    setSelectedDay(todayIndex);
+                  } else {
+                    setSelectedDay(i);
+                  }
+                }}
               >
-                <Text style={[styles.dayBtnDay, isSelected && styles.dayBtnTextActive]}>
+                <Text style={[styles.dayBtnDay, isSelected && styles.dayBtnTextActive, isPast && styles.dayBtnPastText]}>
                   {d}
                 </Text>
-                <Text style={[styles.dayBtnDate, isSelected && styles.dayBtnTextActive]}>
+                <Text style={[styles.dayBtnDate, isSelected && styles.dayBtnTextActive, isPast && styles.dayBtnPastText]}>
                   {weekDates[i].getDate()}
                 </Text>
                 {isToday && <View style={[styles.todayDot, isSelected && { backgroundColor: colors.white }]} />}
+                {isPast && <Text style={styles.pastLabel}>past</Text>}
               </TouchableOpacity>
             );
           })}
@@ -353,6 +371,20 @@ const styles = StyleSheet.create({
   dayBtnDay: { fontSize: typography.xs, fontWeight: '600', color: colors.mutedForeground },
   dayBtnDate: { fontSize: typography.base, fontWeight: '700', color: colors.foreground },
   dayBtnTextActive: { color: colors.white },
+  dayBtnPast: {
+    opacity: 0.45,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.muted,
+  },
+  dayBtnPastText: { color: colors.mutedForeground },
+  pastLabel: {
+    fontSize: 8,
+    color: colors.mutedForeground,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
   todayDot: {
     width: 4,
     height: 4,

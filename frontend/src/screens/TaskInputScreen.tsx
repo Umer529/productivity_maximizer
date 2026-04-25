@@ -22,6 +22,7 @@ import { taskService } from '../services/taskService';
 import { mlService } from '../services/mlService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import CalendarPicker from '../components/CalendarPicker';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'TaskInput'>;
 type RouteType = RouteProp<RootStackParamList, 'TaskInput'>;
@@ -132,11 +133,7 @@ export default function TaskInputScreen() {
   const handleSubmit = async () => {
     if (!user) { setError('Please sign in to manage tasks.'); return; }
     if (!title.trim()) { setError('Task title is required.'); return; }
-    if (!deadline) { setError('Deadline is required (YYYY-MM-DD).'); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
-      setError('Use format YYYY-MM-DD (e.g. 2025-12-31).');
-      return;
-    }
+    if (!deadline) { setError('Please select a deadline from the calendar.'); return; }
     setLoading(true);
     setError('');
     try {
@@ -239,53 +236,65 @@ export default function TaskInputScreen() {
             </View>
           </View>
 
-          {/* ── Course & Deadline row ── */}
-          <View style={styles.rowFields}>
-            <View style={[styles.fieldGroup, { flex: 1 }]}>
-              <Text style={styles.fieldLabel}>Course</Text>
-              <View style={styles.inputBox}>
-                <TextInput
-                  style={styles.input}
-                  value={course}
-                  onChangeText={setCourse}
-                  placeholder="CS201"
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="characters"
-                />
-              </View>
-            </View>
-            <View style={[styles.fieldGroup, { flex: 1.4 }]}>
-              <Text style={styles.fieldLabel}>Deadline <Text style={styles.required}>*</Text></Text>
-              <View style={styles.inputBox}>
-                <TextInput
-                  style={styles.input}
-                  value={deadline}
-                  onChangeText={setDeadline}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="numeric"
-                  maxLength={10}
-                />
-              </View>
+          {/* ── Course ── */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Course</Text>
+            <View style={styles.inputBox}>
+              <TextInput
+                style={styles.input}
+                value={course}
+                onChangeText={setCourse}
+                placeholder="e.g. CS201"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="characters"
+              />
             </View>
           </View>
 
-          {/* ── Quick Deadline Shortcuts ── */}
-          <View style={styles.deadlineShortcuts}>
-            {[
-              { label: 'Tomorrow', days: 1 },
-              { label: 'In 3 days', days: 3 },
-              { label: 'Next week', days: 7 },
-              { label: 'In 2 weeks', days: 14 },
-            ].map((s) => (
-              <TouchableOpacity
-                key={s.label}
-                style={styles.shortcutBtn}
-                onPress={() => setDeadline(todayPlusDays(s.days))}
-              >
-                <Text style={styles.shortcutText}>{s.label}</Text>
-              </TouchableOpacity>
-            ))}
+          {/* ── Deadline ── */}
+          <View style={styles.fieldGroup}>
+            <View style={styles.fieldLabelRow}>
+              <Text style={styles.fieldLabel}>
+                Deadline <Text style={styles.required}>*</Text>
+              </Text>
+              {deadline ? (
+                <Text style={styles.deadlineSelected}>
+                  {new Date(`${deadline}T00:00:00`).toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                  })}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Quick shortcuts */}
+            <View style={styles.deadlineShortcuts}>
+              {[
+                { label: 'Tomorrow', days: 1 },
+                { label: '3 days', days: 3 },
+                { label: '1 week', days: 7 },
+                { label: '2 weeks', days: 14 },
+              ].map((s) => (
+                <TouchableOpacity
+                  key={s.label}
+                  style={[
+                    styles.shortcutBtn,
+                    deadline === todayPlusDays(s.days) && styles.shortcutBtnActive,
+                  ]}
+                  onPress={() => setDeadline(todayPlusDays(s.days))}
+                >
+                  <Text
+                    style={[
+                      styles.shortcutText,
+                      deadline === todayPlusDays(s.days) && styles.shortcutTextActive,
+                    ]}
+                  >
+                    {s.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <CalendarPicker value={deadline} onChange={setDeadline} />
           </View>
 
           {/* ── Description ── */}
@@ -503,7 +512,12 @@ const styles = StyleSheet.create({
   // Row fields
   rowFields: { flexDirection: 'row', gap: spacing.sm },
 
-  // Deadline shortcuts
+  // Deadline
+  deadlineSelected: {
+    fontSize: typography.xs,
+    color: colors.primaryLight,
+    fontWeight: '700',
+  },
   deadlineShortcuts: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   shortcutBtn: {
     backgroundColor: colors.muted,
@@ -513,7 +527,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
+  shortcutBtnActive: {
+    backgroundColor: colors.primaryDim,
+    borderColor: colors.primary + '60',
+  },
   shortcutText: { fontSize: typography.xs, color: colors.subtext, fontWeight: '600' },
+  shortcutTextActive: { color: colors.primaryLight },
 
   // Difficulty
   difficultyRow: { flexDirection: 'row', gap: spacing.sm },

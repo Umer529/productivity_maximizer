@@ -36,6 +36,15 @@ const AMBIENT = [
   { icon: 'leaf-outline' as const, label: 'Nature' },
 ];
 
+// Place audio files in assets/audio/ and uncomment each require.
+// Run: npx expo install expo-av
+const SOUND_SOURCES: Record<string, any> = {
+  Rain:          null, // require('../../assets/audio/rain.mp3')
+  'White Noise': null, // require('../../assets/audio/white-noise.mp3')
+  'Lo-fi':       null, // require('../../assets/audio/lofi.mp3')
+  Nature:        null, // require('../../assets/audio/nature.mp3')
+};
+
 export default function FocusScreen() {
   const navigation = useNavigation<NavProp>();
   const { user } = useAuth();
@@ -57,6 +66,7 @@ export default function FocusScreen() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Tracks actual focused seconds (pauses excluded) for accurate duration reporting
   const elapsedSecondsRef = useRef(0);
+  const soundRef = useRef<any>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
@@ -128,6 +138,43 @@ export default function FocusScreen() {
     }
   }, [isRunning, pulseAnim]);
 
+  // Unload audio on unmount
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync().catch(() => {});
+        soundRef.current = null;
+      }
+    };
+  }, []);
+
+  const stopAmbient = useCallback(async () => {
+    if (!soundRef.current) return;
+    try {
+      await soundRef.current.stopAsync();
+      await soundRef.current.unloadAsync();
+    } catch {
+      // ignore
+    }
+    soundRef.current = null;
+  }, []);
+
+  const playAmbient = useCallback(async (label: string) => {
+    await stopAmbient();
+    const source = SOUND_SOURCES[label];
+    if (!source) return;
+    let Audio: any = null;
+    try { Audio = require('expo-av').Audio; } catch { return; }
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: true });
+      const { sound } = await Audio.Sound.createAsync(source, { isLooping: true, volume: 0.5 });
+      soundRef.current = sound;
+      await sound.playAsync();
+    } catch {
+      soundRef.current = null;
+    }
+  }, [stopAmbient]);
+
   const handleToggle = useCallback(async () => {
     if (!isRunning) {
       if (user && !activeSession) {
@@ -152,6 +199,8 @@ export default function FocusScreen() {
   const handleEndSession = useCallback(async (completed = false) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
+    setActiveAmbient(null);
+    stopAmbient();
     if (completed && selectedTask) {
       setShowCompletionModal(true);
       return;
@@ -171,7 +220,7 @@ export default function FocusScreen() {
       invalidateAnalyticsCache();
     }
     navigation.goBack();
-  }, [user, activeSession, navigation, selectedTask, invalidateTaskCache, invalidateAnalyticsCache]);
+  }, [user, activeSession, navigation, selectedTask, stopAmbient, invalidateTaskCache, invalidateAnalyticsCache]);
 
   const handleConfirmCompletion = useCallback(async () => {
     setShowCompletionModal(false);
@@ -197,6 +246,8 @@ export default function FocusScreen() {
     setIsRunning(false);
     setSeconds(totalSeconds);
     elapsedSecondsRef.current = 0;
+    setActiveAmbient(null);
+    stopAmbient();
   };
 
   const progress = (totalSeconds - seconds) / totalSeconds;
@@ -400,9 +451,15 @@ export default function FocusScreen() {
                   styles.ambientBtn,
                   activeAmbient === s.label && styles.ambientBtnActive,
                 ]}
-                onPress={() =>
-                  setActiveAmbient(activeAmbient === s.label ? null : s.label)
-                }
+                onPress={async () => {
+                  if (activeAmbient === s.label) {
+                    setActiveAmbient(null);
+                    await stopAmbient();
+                  } else {
+                    setActiveAmbient(s.label);
+                    await playAmbient(s.label);
+                  }
+                }}
               >
                 <Ionicons
                   name={s.icon}

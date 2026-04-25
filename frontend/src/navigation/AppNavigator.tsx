@@ -20,6 +20,7 @@ import AnalyticsScreen from '../screens/AnalyticsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import TaskInputScreen from '../screens/TaskInputScreen';
+import TaskDetailScreen from '../screens/TaskDetailScreen';
 
 export type TabParamList = {
   Home: undefined;
@@ -32,6 +33,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Auth: undefined;
   MainTabs: NavigatorScreenParams<TabParamList> | undefined;
+  TaskDetail: { task: Task };
   TaskInput: { task?: Task } | undefined;
   Focus: undefined;
   ProfileSettings: undefined;
@@ -155,6 +157,11 @@ export default function AppNavigator() {
               /* If logged in AND onboarding done → show main app */
               <>
                 <Stack.Screen name="MainTabs" component={MainTabs} />
+                <Stack.Screen
+                  name="TaskDetail"
+                  component={TaskDetailScreen}
+                  options={{ presentation: 'card' }}
+                />
                 <Stack.Screen
                   name="TaskInput"
                   component={TaskInputScreen}

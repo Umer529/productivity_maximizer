@@ -6,7 +6,8 @@ const db = require('../config/database');
 const URGENCY_DAYS_WINDOW = 10;
 
 function computeUrgencyAndPriority(deadline, difficulty, status) {
-  if (status === 'completed') return { urgencyScore: 0, priority: 'low' };
+  // Must always include computedStatus so Task.save() never writes undefined to the status column
+  if (status === 'completed') return { urgencyScore: 0, priority: 'low', computedStatus: 'completed' };
 
   const now = new Date();
   const daysUntil = (new Date(deadline) - now) / (1000 * 60 * 60 * 24);
