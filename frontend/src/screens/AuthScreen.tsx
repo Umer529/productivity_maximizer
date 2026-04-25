@@ -50,10 +50,12 @@ export default function AuthScreen() {
     try {
       if (mode === 'login') {
         await login(email.trim(), password);
+        // Don't navigate - let the auth state change trigger navigation
+        // The NavigationContainer will automatically show Onboarding or MainTabs
       } else {
         await register(name.trim(), email.trim(), password);
+        // After registration, user is logged in, so navigation will update
       }
-      navigation.goBack();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -72,11 +74,6 @@ export default function AuthScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Back ── */}
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={20} color={colors.mutedForeground} />
-          </TouchableOpacity>
-
           {/* ── Logo ── */}
           <View style={styles.logoArea}>
             <View style={styles.logoBox}>

@@ -5,6 +5,7 @@ const helmet       = require('helmet');
 const cors         = require('cors');
 const morgan       = require('morgan');
 const rateLimit    = require('express-rate-limit');
+const os           = require('os');
 
 // Initialise SQLite (creates tables on first run)
 require('./config/database');
@@ -60,13 +61,54 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+/**
+ * Get local network IP addresses for debugging
+ */
+function getLocalIpAddresses() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal and non-IPv4 addresses
+      if (iface.family === 'IPv4' && !iface.internal) {
+        ips.push(iface.address);
+      }
+    }
+  }
+  
+  return ips;
+}
+
 const server = app.listen(PORT, HOST, () => {
-  console.log(`FocusFlow API running on http://${HOST}:${PORT} [SQLite]`);
-  console.log(`For mobile devices, use your PC's local IP address instead of ${HOST}`);
+  console.log('\n' + '='.repeat(70));
+  console.log('🚀 FocusFlow API Server Started [SQLite]');
+  console.log('='.repeat(70));
+  console.log(`📍 Local Server: http://localhost:${PORT}`);
+  
+  // Show all network IPs the server is accessible from
+  const localIps = getLocalIpAddresses();
+  if (localIps.length > 0) {
+    console.log('\n🌐 Server is accessible from these addresses:');
+    localIps.forEach(ip => {
+      console.log(`   • http://${ip}:${PORT}`);
+    });
+  }
+  
+  console.log('\n📱 For different client types:');
+  console.log(`   • Web browser:        http://localhost:${PORT}`);
+  console.log(`   • Android Emulator:   http://10.0.2.2:${PORT}`);
+  console.log(`   • Physical device:    http://<your-pc-ip>:${PORT} (from local network)`);
+  
+  console.log('\n⚙️  Configuration:');
+  console.log(`   • NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   • Database: ${process.env.DB_PATH || './data/focusflow.db'}`);
+  console.log('='.repeat(70) + '\n');
 });
 
 process.on('unhandledRejection', (err) => {
-  console.error(`Unhandled Rejection: ${err.message}`);
+  console.error(`❌ Unhandled Rejection: ${err.message}`);
   server.close(() => process.exit(1));
 });
 

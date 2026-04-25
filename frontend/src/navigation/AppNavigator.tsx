@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavigationContainer, NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing } from '../lib/theme';
@@ -79,10 +80,37 @@ function MainTabs() {
 }
 
 export default function AppNavigator() {
-  const { loading } = useAuth();
+  const { user, loading } = useAuth();
   const [onboardingDone, setOnboardingDone] = useState(false);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
 
-  if (loading) {
+  // Load onboarding status from persistent storage
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      try {
+        const status = await AsyncStorage.getItem('onboarding_done');
+        setOnboardingDone(status === 'true');
+      } catch (err) {
+        console.log('[Navigation] Failed to load onboarding status:', err);
+      } finally {
+        setCheckingOnboarding(false);
+      }
+    };
+    checkOnboardingStatus();
+  }, []);
+
+  // Mark onboarding as complete
+  const markOnboardingDone = async () => {
+    try {
+      await AsyncStorage.setItem('onboarding_done', 'true');
+      setOnboardingDone(true);
+    } catch (err) {
+      console.error('[Navigation] Failed to save onboarding status:', err);
+      setOnboardingDone(true); // Continue anyway
+    }
+  };
+
+  if (loading || checkingOnboarding) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -112,32 +140,38 @@ export default function AppNavigator() {
         }}
       >
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {!onboardingDone ? (
-            <Stack.Screen name="Onboarding">
-              {(props) => (
-                <OnboardingScreen {...props} onComplete={() => setOnboardingDone(true)} />
-              )}
-            </Stack.Screen>
+          {/* If not logged in → show Auth screen */}
+          {!user ? (
+            <Stack.Screen name="Auth" component={AuthScreen} />
           ) : (
-            <>
-              <Stack.Screen name="MainTabs" component={MainTabs} />
-              <Stack.Screen name="Auth" component={AuthScreen} />
-              <Stack.Screen
-                name="TaskInput"
-                component={TaskInputScreen}
-                options={{ presentation: 'modal' }}
-              />
-              <Stack.Screen
-                name="Focus"
-                component={FocusScreen}
-                options={{ presentation: 'fullScreenModal' }}
-              />
-              <Stack.Screen
-                name="ProfileSettings"
-                component={ProfileSettingsScreen}
-                options={{ presentation: 'modal' }}
-              />
-            </>
+            /* If logged in but onboarding not done → show Onboarding */
+            !onboardingDone ? (
+              <Stack.Screen name="Onboarding">
+                {(props) => (
+                  <OnboardingScreen {...props} onComplete={markOnboardingDone} />
+                )}
+              </Stack.Screen>
+            ) : (
+              /* If logged in AND onboarding done → show main app */
+              <>
+                <Stack.Screen name="MainTabs" component={MainTabs} />
+                <Stack.Screen
+                  name="TaskInput"
+                  component={TaskInputScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <Stack.Screen
+                  name="Focus"
+                  component={FocusScreen}
+                  options={{ presentation: 'fullScreenModal' }}
+                />
+                <Stack.Screen
+                  name="ProfileSettings"
+                  component={ProfileSettingsScreen}
+                  options={{ presentation: 'modal' }}
+                />
+              </>
+            )
           )}
         </Stack.Navigator>
       </NavigationContainer>
