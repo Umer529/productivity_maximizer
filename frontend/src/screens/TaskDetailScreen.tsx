@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useAppData } from '../contexts/AppDataContext';
@@ -26,30 +27,50 @@ type RouteType = RouteProp<RootStackParamList, 'TaskDetail'>;
 
 type SprintState = 'idle' | 'running' | 'paused';
 
+// ── Persistent sprint record (survives navigation and app restarts) ──────────
+const SPRINT_KEY = 'focusflow_active_sprint';
+
+interface SprintRecord {
+  sessionId: string;
+  taskId: string;
+  startTime: string;   // ISO — backend session.startTime (wall-clock anchor)
+  pausedMs: number;    // total accumulated paused milliseconds
+  pausedAt: string | null; // ISO if currently paused, null if running
+}
+
+async function saveSprintRecord(r: SprintRecord) {
+  await AsyncStorage.setItem(SPRINT_KEY, JSON.stringify(r));
+}
+async function loadSprintRecord(): Promise<SprintRecord | null> {
+  const raw = await AsyncStorage.getItem(SPRINT_KEY);
+  return raw ? (JSON.parse(raw) as SprintRecord) : null;
+}
+async function clearSprintRecord() {
+  await AsyncStorage.removeItem(SPRINT_KEY);
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 const PRIORITY_COLORS: Record<string, string> = {
   critical: colors.destructive,
   high: '#f97316',
   medium: colors.warning,
   low: colors.success,
 };
-
 const STATUS_COLORS: Record<string, string> = {
   pending: colors.warning,
   in_progress: colors.accent,
   completed: colors.success,
   overdue: colors.destructive,
 };
-
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
   in_progress: 'In Progress',
   completed: 'Completed',
   overdue: 'Overdue',
 };
-
 const DIFFICULTY_LABELS = ['', 'Very Easy', 'Easy', 'Medium', 'Hard', 'Very Hard'];
 const DIFFICULTY_COLORS = ['', colors.success, colors.success, colors.warning, '#f97316', colors.destructive];
-
 const TYPE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   assignment: 'document-text-outline',
   quiz: 'help-circle-outline',
@@ -76,6 +97,8 @@ function formatTimer(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function TaskDetailScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -91,10 +114,63 @@ export default function TaskDetailScreen() {
   const [successMsg, setSuccessMsg] = useState('');
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const elapsedSecondsRef = useRef(0);
+  const elapsedSecondsRef = useRef(0);     // mirrors sprintSeconds; used by stop handler
+  const sprintStateRef = useRef<SprintState>('idle');  // ref copy so callbacks read current value
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-  // Reload task whenever this screen gains focus (e.g. returning from edit)
+  // Keep ref in sync with state (avoids stale closures in useFocusEffect)
+  useEffect(() => {
+    sprintStateRef.current = sprintState;
+  }, [sprintState]);
+
+  // ── Sprint recovery: runs whenever the screen gains focus ─────────────────
+  const recoverActiveSprint = useCallback(async () => {
+    try {
+      const record = await loadSprintRecord();
+      if (!record || record.taskId !== String(task._id)) return;
+
+      // Confirm the backend session is still open
+      const res = await focusSessionService.getActiveSession();
+      const backendSession = res.data;
+      if (
+        !backendSession ||
+        String(backendSession._id) !== record.sessionId
+      ) {
+        // Session was closed elsewhere — clean up
+        await clearSprintRecord();
+        return;
+      }
+
+      // Compute how many active (non-paused) seconds have elapsed
+      const startMs = new Date(record.startTime).getTime();
+      const nowMs = Date.now();
+
+      let recoveredSeconds: number;
+      let recoveredState: SprintState;
+
+      if (record.pausedAt) {
+        // Was paused when user navigated away — freeze timer at that moment
+        const pauseStartMs = new Date(record.pausedAt).getTime();
+        const activeMs = (pauseStartMs - startMs) - record.pausedMs;
+        recoveredSeconds = Math.max(0, Math.floor(activeMs / 1000));
+        recoveredState = 'paused';
+      } else {
+        // Was running — include wall-clock time that passed while away
+        const activeMs = (nowMs - startMs) - record.pausedMs;
+        recoveredSeconds = Math.max(0, Math.floor(activeMs / 1000));
+        recoveredState = 'running';
+      }
+
+      elapsedSecondsRef.current = recoveredSeconds;
+      setSprintSeconds(recoveredSeconds);
+      setActiveSession(backendSession);
+      setSprintState(recoveredState);
+    } catch {
+      // Recovery failed silently — leave as idle
+    }
+  }, [task._id]);
+
+  // Reload task + attempt sprint recovery on every screen focus
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
@@ -102,7 +178,12 @@ export default function TaskDetailScreen() {
         .getTask(String(task._id))
         .then((r) => setTask(r.data))
         .catch(() => {});
-    }, [task._id, user]),
+
+      // Only recover if we're not already tracking a sprint locally
+      if (sprintStateRef.current === 'idle') {
+        recoverActiveSprint();
+      }
+    }, [task._id, user, recoverActiveSprint]),
   );
 
   // Animate progress bar whenever task.progress changes
@@ -115,12 +196,12 @@ export default function TaskDetailScreen() {
     }).start();
   }, [task.progress, progressAnim]);
 
-  // Timer tick
+  // Timer tick — only runs while sprintState === 'running'
   useEffect(() => {
     if (sprintState === 'running') {
       intervalRef.current = setInterval(() => {
-        setSprintSeconds((s) => s + 1);
         elapsedSecondsRef.current += 1;
+        setSprintSeconds((s) => s + 1);
       }, 1000);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -130,12 +211,14 @@ export default function TaskDetailScreen() {
     };
   }, [sprintState]);
 
-  // Cleanup on unmount
+  // Clear interval on unmount (navigation away does NOT stop/save the session)
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
+
+  // ── Sprint controls ───────────────────────────────────────────────────────
 
   const handleStartSprint = async () => {
     elapsedSecondsRef.current = 0;
@@ -147,18 +230,42 @@ export default function TaskDetailScreen() {
         plannedDuration: task.estimatedDuration,
         sessionType: 'study',
       });
-      setActiveSession(res.data);
+      const session = res.data;
+      setActiveSession(session);
+      // Persist so recovery works after navigation or app restart
+      await saveSprintRecord({
+        sessionId: String(session._id),
+        taskId: String(task._id),
+        startTime: session.startTime,
+        pausedMs: 0,
+        pausedAt: null,
+      });
     } catch {
       // Proceed with local timer even if backend call fails
     }
     setSprintState('running');
   };
 
-  const handlePauseSprint = () => {
+  const handlePauseSprint = async () => {
     setSprintState('paused');
+    // Record when the pause started so recovery can account for time away
+    const record = await loadSprintRecord();
+    if (record) {
+      await saveSprintRecord({ ...record, pausedAt: new Date().toISOString() });
+    }
   };
 
-  const handleResumeSprint = () => {
+  const handleResumeSprint = async () => {
+    // Accumulate the pause duration before clearing pausedAt
+    const record = await loadSprintRecord();
+    if (record?.pausedAt) {
+      const extraPausedMs = Date.now() - new Date(record.pausedAt).getTime();
+      await saveSprintRecord({
+        ...record,
+        pausedMs: record.pausedMs + extraPausedMs,
+        pausedAt: null,
+      });
+    }
     setSprintState('running');
   };
 
@@ -171,7 +278,7 @@ export default function TaskDetailScreen() {
 
     if (activeSession) {
       try {
-        await focusSessionService.endSession(activeSession._id, {
+        await focusSessionService.endSession(String(activeSession._id), {
           completed: false,
           interrupted: true,
           actualDuration: actualMinutes,
@@ -181,6 +288,8 @@ export default function TaskDetailScreen() {
       }
       setActiveSession(null);
     }
+
+    await clearSprintRecord();
 
     // Refresh task so progress bar reflects new time spent
     try {
@@ -200,7 +309,6 @@ export default function TaskDetailScreen() {
   const handleMarkDone = async () => {
     if (task.status === 'completed') return;
     setCompleting(true);
-    // Stop any active sprint first
     if (sprintState !== 'idle') {
       await handleStopSprint();
     }
@@ -226,6 +334,7 @@ export default function TaskDetailScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
+            if (sprintState !== 'idle') await handleStopSprint();
             await taskService.deleteTask(String(task._id));
             invalidateTaskCache();
             invalidateAnalyticsCache();
@@ -238,7 +347,8 @@ export default function TaskDetailScreen() {
     ]);
   };
 
-  // Derived display values
+  // ── Derived display values ────────────────────────────────────────────────
+
   const pColor = PRIORITY_COLORS[task.priority] ?? colors.mutedForeground;
   const sColor = STATUS_COLORS[task.status] ?? colors.mutedForeground;
   const dColor = DIFFICULTY_COLORS[task.difficulty] ?? colors.mutedForeground;
@@ -248,7 +358,6 @@ export default function TaskDetailScreen() {
   const estMinutes = task.estimatedDuration || 60;
   const confirmedProgress = task.progress || 0;
 
-  // Live contribution of current sprint (added on top of confirmed progress for display)
   const liveSprintMinutes = Math.floor(sprintSeconds / 60);
   const liveProgress =
     sprintState !== 'idle'
@@ -261,26 +370,18 @@ export default function TaskDetailScreen() {
   deadlineDate.setHours(0, 0, 0, 0);
   const daysUntil = Math.round((deadlineDate.getTime() - today.getTime()) / 86400000);
   const deadlineLabel =
-    daysUntil < 0
-      ? `${Math.abs(daysUntil)}d overdue`
-      : daysUntil === 0
-      ? 'Due today'
-      : `${daysUntil}d left`;
+    daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? 'Due today' : `${daysUntil}d left`;
   const deadlineColor =
-    daysUntil < 0
-      ? colors.destructive
-      : daysUntil <= 2
-      ? colors.warning
-      : colors.mutedForeground;
+    daysUntil < 0 ? colors.destructive : daysUntil <= 2 ? colors.warning : colors.mutedForeground;
 
   const isCompleted = task.status === 'completed';
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
         {/* ── Header ── */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
@@ -333,20 +434,14 @@ export default function TaskDetailScreen() {
           <View style={styles.infoDivider} />
 
           <View style={styles.infoGrid}>
-            {task.course ? (
-              <InfoRow icon="book-outline" label="Course" value={task.course} />
-            ) : null}
+            {task.course ? <InfoRow icon="book-outline" label="Course" value={task.course} /> : null}
             <InfoRow
               icon="calendar-outline"
               label="Deadline"
               value={`${deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${deadlineLabel}`}
               valueColor={deadlineColor}
             />
-            <InfoRow
-              icon="time-outline"
-              label="Estimated"
-              value={formatDuration(estMinutes)}
-            />
+            <InfoRow icon="time-outline" label="Estimated" value={formatDuration(estMinutes)} />
             <InfoRow
               icon="speedometer-outline"
               label="Difficulty"
@@ -355,15 +450,11 @@ export default function TaskDetailScreen() {
             />
           </View>
 
-          {/* Difficulty bar */}
           <View style={styles.diffBar}>
             {[1, 2, 3, 4, 5].map((n) => (
               <View
                 key={n}
-                style={[
-                  styles.diffSegment,
-                  { backgroundColor: n <= task.difficulty ? dColor : colors.muted },
-                ]}
+                style={[styles.diffSegment, { backgroundColor: n <= task.difficulty ? dColor : colors.muted }]}
               />
             ))}
           </View>
@@ -381,15 +472,11 @@ export default function TaskDetailScreen() {
               style={[
                 styles.progressFill,
                 {
-                  width: progressAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0%', '100%'],
-                  }),
+                  width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
                   backgroundColor: isCompleted ? colors.success : pColor,
                 },
               ]}
             />
-            {/* Live sprint contribution overlay */}
             {sprintState !== 'idle' && liveSprintMinutes > 0 && (
               <View
                 style={[
@@ -419,9 +506,7 @@ export default function TaskDetailScreen() {
             <View style={styles.timeItem}>
               <Ionicons name="bar-chart-outline" size={13} color={colors.accent} />
               <Text style={styles.timeLabel}>Remaining</Text>
-              <Text style={styles.timeValue}>
-                {formatDuration(Math.max(0, estMinutes - spentMinutes))}
-              </Text>
+              <Text style={styles.timeValue}>{formatDuration(Math.max(0, estMinutes - spentMinutes))}</Text>
             </View>
           </View>
         </View>
@@ -449,7 +534,6 @@ export default function TaskDetailScreen() {
 
           {(sprintState === 'running' || sprintState === 'paused') && (
             <View style={styles.timerBox}>
-              {/* Live indicator */}
               <View style={styles.timerStatus}>
                 {sprintState === 'running' ? (
                   <>
@@ -466,9 +550,7 @@ export default function TaskDetailScreen() {
 
               <Text style={styles.timerDisplay}>{formatTimer(sprintSeconds)}</Text>
               <Text style={styles.timerSub}>
-                {liveSprintMinutes > 0
-                  ? `+${liveSprintMinutes}m this sprint`
-                  : 'Tracking started'}
+                {liveSprintMinutes > 0 ? `+${liveSprintMinutes}m this sprint` : 'Tracking started'}
               </Text>
 
               <View style={styles.timerControls}>
@@ -542,11 +624,10 @@ export default function TaskDetailScreen() {
   );
 }
 
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function InfoRow({
-  icon,
-  label,
-  value,
-  valueColor,
+  icon, label, value, valueColor,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
@@ -564,27 +645,13 @@ function InfoRow({
   );
 }
 
+// ── Styles ───────────────────────────────────────────────────────────────────
+
 const infoStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs + 1,
-  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs + 1 },
   icon: { width: 18, textAlign: 'center' },
-  label: {
-    fontSize: typography.xs,
-    color: colors.mutedForeground,
-    fontWeight: '600',
-    width: 72,
-  },
-  value: {
-    flex: 1,
-    fontSize: typography.sm,
-    color: colors.foreground,
-    fontWeight: '500',
-    textAlign: 'right',
-  },
+  label: { fontSize: typography.xs, color: colors.mutedForeground, fontWeight: '600', width: 72 },
+  value: { flex: 1, fontSize: typography.sm, color: colors.foreground, fontWeight: '500', textAlign: 'right' },
 });
 
 const styles = StyleSheet.create({
@@ -596,326 +663,117 @@ const styles = StyleSheet.create({
     gap: spacing.section,
   },
 
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    flexShrink: 0,
+    width: 40, height: 40, borderRadius: radius.md,
+    backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.cardBorder, flexShrink: 0,
   },
-  deleteBtn: {
-    backgroundColor: colors.destructiveDim,
-    borderColor: colors.destructive + '30',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: typography.md,
-    fontWeight: '800',
-    color: colors.foreground,
-    letterSpacing: -0.3,
-  },
+  deleteBtn: { backgroundColor: colors.destructiveDim, borderColor: colors.destructive + '30' },
+  headerTitle: { flex: 1, fontSize: typography.md, fontWeight: '800', color: colors.foreground, letterSpacing: -0.3 },
   headerActions: { flexDirection: 'row', gap: spacing.sm },
 
-  // Badges
   badgeRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 1,
-    borderRadius: radius.full,
-    borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 1,
+    borderRadius: radius.full, borderWidth: 1,
   },
   badgeDot: { width: 6, height: 6, borderRadius: 3 },
   badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
 
-  // Info card
   infoCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    gap: spacing.md,
+    backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.xl,
+    borderWidth: 1, borderColor: colors.cardBorder, gap: spacing.md,
   },
-  description: {
-    fontSize: typography.sm,
-    color: colors.subtext,
-    lineHeight: 20,
-  },
-  noDescription: {
-    fontSize: typography.sm,
-    color: colors.mutedForeground,
-    fontStyle: 'italic',
-  },
-  infoDivider: {
-    height: 1,
-    backgroundColor: colors.cardBorder,
-  },
+  description: { fontSize: typography.sm, color: colors.subtext, lineHeight: 20 },
+  noDescription: { fontSize: typography.sm, color: colors.mutedForeground, fontStyle: 'italic' },
+  infoDivider: { height: 1, backgroundColor: colors.cardBorder },
   infoGrid: { gap: 0 },
-  diffBar: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  diffSegment: {
-    flex: 1,
-    height: 6,
-    borderRadius: radius.full,
-  },
+  diffBar: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+  diffSegment: { flex: 1, height: 6, borderRadius: radius.full },
 
-  // Progress card
   progressCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    gap: spacing.md,
+    backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.xl,
+    borderWidth: 1, borderColor: colors.cardBorder, gap: spacing.md,
   },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: typography.sm,
-    fontWeight: '800',
-    color: colors.foreground,
-    letterSpacing: 0.3,
-  },
-  progressPct: {
-    fontSize: typography.lg,
-    fontWeight: '800',
-    color: colors.foreground,
-  },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { fontSize: typography.sm, fontWeight: '800', color: colors.foreground, letterSpacing: 0.3 },
+  progressPct: { fontSize: typography.lg, fontWeight: '800', color: colors.foreground },
   progressTrack: {
-    height: 10,
-    backgroundColor: colors.muted,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-    position: 'relative',
+    height: 10, backgroundColor: colors.muted, borderRadius: radius.full,
+    overflow: 'hidden', position: 'relative',
   },
-  progressFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: radius.full,
-  },
+  progressFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: radius.full },
   progressLiveOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    backgroundColor: colors.primaryLight + '60',
-    borderRadius: radius.full,
+    position: 'absolute', top: 0, bottom: 0,
+    backgroundColor: colors.primaryLight + '60', borderRadius: radius.full,
   },
   timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.muted,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.muted, borderRadius: radius.md, padding: spacing.md,
   },
-  timeItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  timeDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: colors.cardBorder,
-  },
-  timeLabel: {
-    fontSize: 10,
-    color: colors.mutedForeground,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  timeValue: {
-    fontSize: typography.sm,
-    color: colors.foreground,
-    fontWeight: '700',
-  },
+  timeItem: { flex: 1, alignItems: 'center', gap: spacing.xs },
+  timeDivider: { width: 1, height: 32, backgroundColor: colors.cardBorder },
+  timeLabel: { fontSize: 10, color: colors.mutedForeground, fontWeight: '600', letterSpacing: 0.5 },
+  timeValue: { fontSize: typography.sm, color: colors.foreground, fontWeight: '700' },
 
-  // Sprint card
   sprintCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    gap: spacing.lg,
+    backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.xl,
+    borderWidth: 1, borderColor: colors.cardBorder, gap: spacing.lg,
   },
-  sprintHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
+  sprintHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   startBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.lg,
-    height: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
+    backgroundColor: colors.primary, borderRadius: radius.lg, height: 52,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
     ...shadows.primary,
   },
-  startBtnDisabled: {
-    backgroundColor: colors.muted,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  startBtnText: {
-    fontSize: typography.base,
-    fontWeight: '700',
-    color: colors.white,
-  },
+  startBtnDisabled: { backgroundColor: colors.muted, shadowOpacity: 0, elevation: 0 },
+  startBtnText: { fontSize: typography.base, fontWeight: '700', color: colors.white },
   timerBox: {
-    backgroundColor: colors.primaryDim,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
+    backgroundColor: colors.primaryDim, borderRadius: radius.lg, padding: spacing.xl,
+    alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: colors.primary + '30',
   },
-  timerStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-  },
-  timerStatusText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.success,
-    letterSpacing: 1.5,
-  },
+  timerStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
+  timerStatusText: { fontSize: 10, fontWeight: '800', color: colors.success, letterSpacing: 1.5 },
   timerDisplay: {
-    fontSize: 48,
-    fontWeight: '800',
-    color: colors.foreground,
-    letterSpacing: -2,
-    fontVariant: ['tabular-nums'],
+    fontSize: 48, fontWeight: '800', color: colors.foreground,
+    letterSpacing: -2, fontVariant: ['tabular-nums'],
   },
-  timerSub: {
-    fontSize: typography.xs,
-    color: colors.mutedForeground,
-  },
-  timerControls: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    width: '100%',
-  },
+  timerSub: { fontSize: typography.xs, color: colors.mutedForeground },
+  timerControls: { flexDirection: 'row', gap: spacing.md, width: '100%' },
   pauseBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: radius.md,
-    backgroundColor: colors.card,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    flex: 1, height: 46, borderRadius: radius.md, backgroundColor: colors.card,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.cardBorder,
   },
-  pauseBtnText: {
-    fontSize: typography.sm,
-    fontWeight: '700',
-    color: colors.foreground,
-  },
+  pauseBtnText: { fontSize: typography.sm, fontWeight: '700', color: colors.foreground },
   resumeBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
+    flex: 1, height: 46, borderRadius: radius.md, backgroundColor: colors.primary,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
     ...shadows.primary,
   },
-  resumeBtnText: {
-    fontSize: typography.sm,
-    fontWeight: '700',
-    color: colors.white,
-  },
+  resumeBtnText: { fontSize: typography.sm, fontWeight: '700', color: colors.white },
   stopBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: radius.md,
-    backgroundColor: colors.destructive,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
+    flex: 1, height: 46, borderRadius: radius.md, backgroundColor: colors.destructive,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
   },
-  stopBtnText: {
-    fontSize: typography.sm,
-    fontWeight: '700',
-    color: colors.white,
-  },
+  stopBtnText: { fontSize: typography.sm, fontWeight: '700', color: colors.white },
 
-  // Success banner
   successBanner: {
-    backgroundColor: colors.secondaryDim,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.success + '30',
+    backgroundColor: colors.secondaryDim, borderRadius: radius.md, padding: spacing.md,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.success + '30',
   },
-  successText: {
-    fontSize: typography.xs,
-    color: colors.success,
-    fontWeight: '600',
-    flex: 1,
-  },
+  successText: { fontSize: typography.xs, color: colors.success, fontWeight: '600', flex: 1 },
 
-  // Mark done button
   doneBtn: {
-    backgroundColor: colors.success,
-    borderRadius: radius.lg,
-    height: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    shadowColor: colors.success,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    backgroundColor: colors.success, borderRadius: radius.lg, height: 58,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    shadowColor: colors.success, shadowOpacity: 0.35, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 }, elevation: 10,
   },
-  doneBtnCompleted: {
-    backgroundColor: colors.muted,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  doneBtnText: {
-    fontSize: typography.base,
-    fontWeight: '800',
-    color: colors.white,
-  },
+  doneBtnCompleted: { backgroundColor: colors.muted, shadowOpacity: 0, elevation: 0 },
+  doneBtnText: { fontSize: typography.base, fontWeight: '800', color: colors.white },
 });
