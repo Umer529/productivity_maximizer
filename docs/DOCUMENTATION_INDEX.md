@@ -17,6 +17,7 @@
 
 ### For Project Info
 - **PROJECT_SUMMARY.md** - Original project summary (pre-existing)
+- **RELEASE_NOTES.md** - Chronological non-functional updates
 - **README.md** - Standard readme
 
 ---
