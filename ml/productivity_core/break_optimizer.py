@@ -226,6 +226,16 @@ class BreakOptimizer:
                 prayers_added.add(item['prayer_name'])
 
         return optimized
+        
+     def _get_break_description(break_type: str) -> str:
+        """Get description for break type."""
+        descriptions = {
+            'short_break': 'Quick break - stretch, hydrate, or take a short walk',
+            'long_break': 'Extended break - rest, snack, or step outside',
+            'prayer_break': 'Islamic prayer break (Namaz)',
+        }
+        return descriptions.get(break_type, 'Take a break')
+
 
     def suggest_break_adjustments(
         self,
@@ -276,11 +286,4 @@ class BreakOptimizer:
         }
 
     @staticmethod
-    def _get_break_description(break_type: str) -> str:
-        """Get description for break type."""
-        descriptions = {
-            'short_break': 'Quick break - stretch, hydrate, or take a short walk',
-            'long_break': 'Extended break - rest, snack, or step outside',
-            'prayer_break': 'Islamic prayer break (Namaz)',
-        }
-        return descriptions.get(break_type, 'Take a break')
+   
