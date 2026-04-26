@@ -4,6 +4,7 @@
 
 ### For Quick Start
 - **QUICK_START.md** - Getting started in 5 minutes with examples
+- **USER_MANUAL.md** - Full end-user workflow and usage guide
 - **PROJECT_COMPLETE.txt** - Visual summary of everything done
 
 ### For Deep Dive

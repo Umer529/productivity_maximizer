@@ -199,6 +199,7 @@ To retrain: open `ml/training/Productivity_Regression_Model.ipynb` and run all c
 
 See the [`docs/`](docs/) folder for:
 - `QUICK_START.md` — condensed setup in under 5 minutes
+- `USER_MANUAL.md` — full end-user guide for daily app usage
 - `TROUBLESHOOTING.md` — common issues and fixes
 - `INTEGRATION_GUIDE.md` — ML backend integration details
 - `NETWORK_CONFIG.md` — multi-device / cross-platform network setup
