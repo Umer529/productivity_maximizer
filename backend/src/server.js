@@ -15,20 +15,23 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
-app.use(helmet());
-app.use(
-  cors({
-    origin: [
-      process.env.FRONTEND_URL || 'http://localhost:8080',
-      'http://localhost:8081',
-      'http://localhost:19006',
-      /^http:\/\/192\.168\./,
-      /^http:\/\/10\.0\./,
-      /^exp:\/\//,
-    ],
-    credentials: true,
-  })
-);
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+// CORS — development: allow all origins so Expo Go, emulators, and simulators
+// all work without configuration. Production: restrict to the frontend URL.
+const corsOptions =
+  process.env.NODE_ENV === 'production'
+    ? {
+        origin: [
+          process.env.FRONTEND_URL || 'http://localhost:8080',
+          /^https?:\/\/192\.168\./,
+          /^https?:\/\/10\./,
+        ],
+        credentials: true,
+      }
+    : { origin: true, credentials: true }; // reflect any origin in dev
+
+app.use(cors(corsOptions));
 
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
