@@ -44,6 +44,7 @@ const TYPE_CONFIG: Record<string, { bg: string; text: string; dot: string; icon:
   break:    { bg: colors.muted,         text: colors.mutedForeground, dot: colors.mutedForeground, icon: 'cafe-outline' },
   prayer:   { bg: colors.secondaryDim,  text: colors.success,      dot: colors.success,  icon: 'moon-outline' },
   meal:     { bg: colors.warningDim,    text: colors.warning,      dot: colors.warning,  icon: 'restaurant-outline' },
+  custom:   { bg: colors.accentDim,     text: colors.accent,       dot: colors.accent,   icon: 'timer-outline' },
 };
 
 export default function SchedulerScreen() {
@@ -200,6 +201,13 @@ export default function SchedulerScreen() {
               label={`${slots.filter((s) => s.type === 'prayer').length} prayers`}
               color={colors.success}
             />
+            {slots.some((s) => s.type === 'custom') && (
+              <SummaryChip
+                icon="timer-outline"
+                label={`${slots.filter((s) => s.type === 'custom').length} custom`}
+                color={colors.accent}
+              />
+            )}
           </View>
         )}
 

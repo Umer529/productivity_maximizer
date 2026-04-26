@@ -9,8 +9,8 @@ import json
 import numpy as np
 from pathlib import Path
 
-# Add productivity_core to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add ml/ directory to path so `productivity_core` package is importable
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'ml'))
 
 from productivity_core import (
     ProductivityPredictor,

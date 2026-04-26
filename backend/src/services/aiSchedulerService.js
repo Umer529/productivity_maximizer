@@ -65,123 +65,186 @@ const prioritizeTasks = (tasks) => {
  * @returns {Array} schedule slots
  */
 const generateStudySchedule = (user, tasks, date) => {
-  const focusDuration = user.focusDuration || 25;
-  const breakDuration = user.breakDuration || 5;
+  const focusDuration    = user.focusDuration    || 25;
+  const breakDuration    = user.breakDuration    || 5;
   const longBreakDuration = user.longBreakDuration || 15;
-  const longBreakAfter = user.longBreakAfter || 4;
-  const namazEnabled = user.namazBreaksEnabled !== false;
+  const longBreakAfter   = user.longBreakAfter   || 4;
+  const namazEnabled     = user.namazBreaksEnabled !== false;
 
   const studyStart = timeToMinutes(user.studyStartTime || '08:00');
-  const studyEnd = timeToMinutes(user.studyEndTime || '22:00');
+  const studyEnd   = timeToMinutes(user.studyEndTime   || '22:00');
 
-  // Build set of prayer-block minutes (each prayer occupies 15 min)
-  const prayerBlocks = namazEnabled
-    ? NAMAZ_TIMES.map((p) => ({
-        start: timeToMinutes(p.time),
-        end: timeToMinutes(p.time) + 15,
-        name: p.name,
-      }))
-    : [];
+  // For today: advance cursor to current time (rounded up to nearest 5 min)
+  const now = new Date();
+  const schedDate = date instanceof Date ? date : new Date(date);
+  const isTodaySchedule =
+    schedDate.getFullYear() === now.getFullYear() &&
+    schedDate.getMonth()    === now.getMonth()    &&
+    schedDate.getDate()     === now.getDate();
 
-  const isBlockedByPrayer = (start, duration) => {
-    const end = start + duration;
-    return prayerBlocks.find((p) => start < p.end && end > p.start);
-  };
+  const nowMins = isTodaySchedule
+    ? Math.ceil((now.getHours() * 60 + now.getMinutes()) / 5) * 5
+    : studyStart;
+  let cursor = Math.max(studyStart, nowMins);
 
-  const sortedTasks = prioritizeTasks(
-    tasks.filter((t) => t.status !== 'completed')
-  );
+  // ── Build all fixed blocks (prayers + custom breaks), sorted by start ────────
+  const fixedBlocks = [];
 
-  const schedule = [];
-  let cursor = studyStart;
-  let sessionCount = 0;
-  let taskIndex = 0;
-  const hasTasks = sortedTasks.length > 0;
-
-  while (cursor + focusDuration <= studyEnd) {
-    // Insert prayer break if this slot overlaps a prayer time
-    const prayerConflict = isBlockedByPrayer(cursor, focusDuration);
-    if (prayerConflict) {
-      // Add the prayer slot first
-      schedule.push({
-        time: minutesToTime(prayerConflict.start),
-        task: `${prayerConflict.name} Prayer`,
-        type: 'prayer',
-        duration: +(15 / 60).toFixed(2),
-      });
-      cursor = prayerConflict.end;
-      continue;
-    }
-
-    // Determine which task to work on
-    const currentTask = hasTasks ? sortedTasks[taskIndex % sortedTasks.length] : null;
-
-    if (currentTask) {
-      schedule.push({
-        time: minutesToTime(cursor),
-        task: currentTask.title,
-        type: 'study',
-        duration: +(focusDuration / 60).toFixed(2),
-        course: currentTask.course || undefined,
-        taskId: String(currentTask._id),
-      });
-    } else {
-      schedule.push({
-        time: minutesToTime(cursor),
-        task: 'Free Study / Review',
-        type: 'study',
-        duration: +(focusDuration / 60).toFixed(2),
-      });
-    }
-
-    cursor += focusDuration;
-    sessionCount++;
-    taskIndex++;
-
-    // After every `longBreakAfter` sessions insert a long break, else short break
-    if (cursor >= studyEnd) break;
-
-    if (sessionCount % longBreakAfter === 0) {
-      schedule.push({
-        time: minutesToTime(cursor),
-        task: 'Long Break',
-        type: 'break',
-        duration: +(longBreakDuration / 60).toFixed(2),
-      });
-      cursor += longBreakDuration;
-    } else {
-      schedule.push({
-        time: minutesToTime(cursor),
-        task: 'Short Break',
-        type: 'break',
-        duration: +(breakDuration / 60).toFixed(2),
-      });
-      cursor += breakDuration;
-    }
-  }
-
-  // Add standalone prayer slots that fall inside study window but weren't inserted yet
   if (namazEnabled) {
-    prayerBlocks.forEach((p, idx) => {
-      const prayerName = NAMAZ_TIMES[idx].name;
-      if (
-        p.start >= studyStart &&
-        p.start < studyEnd &&
-        !schedule.find((s) => s.type === 'prayer' && s.task.includes(prayerName))
-      ) {
-        schedule.push({
-          time: minutesToTime(p.start),
-          task: `${prayerName} Prayer`,
-          type: 'prayer',
-          duration: +(15 / 60).toFixed(2),
-        });
+    const selectedPrayers = user.selectedNamazPrayers || [];
+    NAMAZ_TIMES.forEach((p) => {
+      if (selectedPrayers.length > 0 && !selectedPrayers.includes(p.name)) return;
+      const pStart = timeToMinutes(p.time);
+      if (pStart >= studyStart && pStart < studyEnd) {
+        fixedBlocks.push({ start: pStart, end: pStart + 15, name: `${p.name} Prayer`, type: 'prayer' });
       }
     });
   }
 
-  // Sort final schedule by time
-  schedule.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  (user.customBreaks || []).forEach((b) => {
+    const bStart = timeToMinutes(b.startTime || '12:00');
+    const bDur   = Math.max(5, b.duration || 15);
+    if (bStart >= studyStart && bStart < studyEnd) {
+      fixedBlocks.push({ start: bStart, end: bStart + bDur, name: b.name || 'Break', type: 'custom' });
+    }
+  });
 
+  fixedBlocks.sort((a, b) => a.start - b.start);
+
+  // ── Build study slot queue: expand tasks into sprint-sized chunks ─────────────
+  // Sprint duration = min(remaining work, user's focusDuration) — not just focusDuration
+  const sortedTasks = prioritizeTasks(tasks.filter((t) => t.status !== 'completed'));
+  const studySlots = [];
+
+  for (const task of sortedTasks) {
+    const remaining = Math.max(
+      0,
+      (task.estimatedDuration || focusDuration) - (task.actualDuration || 0),
+    );
+    let filled = 0;
+    while (filled < remaining) {
+      const chunk = Math.min(focusDuration, remaining - filled);
+      if (chunk < 5) break;
+      studySlots.push({ task, duration: chunk });
+      filled += chunk;
+    }
+  }
+
+  // ── Main scheduling loop ────────────────────────────────────────────────────
+  const schedule = [];
+  let sessionCount = 0;
+  let slotIdx  = 0;
+  let blockIdx = 0;
+
+  const advanceBlocks = () => {
+    while (blockIdx < fixedBlocks.length && fixedBlocks[blockIdx].end <= cursor) {
+      blockIdx++;
+    }
+  };
+
+  advanceBlocks();
+
+  while (cursor < studyEnd) {
+    advanceBlocks();
+
+    const nextBlock = blockIdx < fixedBlocks.length ? fixedBlocks[blockIdx] : null;
+
+    // If cursor is inside a fixed block: insert it and skip past
+    if (nextBlock && cursor >= nextBlock.start) {
+      schedule.push({
+        time:     minutesToTime(nextBlock.start),
+        task:     nextBlock.name,
+        type:     nextBlock.type,
+        duration: +((nextBlock.end - nextBlock.start) / 60).toFixed(2),
+      });
+      cursor   = nextBlock.end;
+      blockIdx++;
+      continue;
+    }
+
+    // How far can we go before the next fixed block (or study end)?
+    const horizon   = nextBlock ? Math.min(nextBlock.start, studyEnd) : studyEnd;
+    const timeAvail = horizon - cursor;
+
+    if (timeAvail < 5) {
+      cursor = horizon; // skip tiny gap
+      continue;
+    }
+
+    // Determine study slot duration
+    const currentSlot  = slotIdx < studySlots.length ? studySlots[slotIdx] : null;
+    const wantDuration = currentSlot ? currentSlot.duration : focusDuration;
+    const actualDur    = Math.min(wantDuration, timeAvail);
+
+    // Push study slot
+    if (currentSlot) {
+      schedule.push({
+        time:     minutesToTime(cursor),
+        task:     currentSlot.task.title,
+        type:     'study',
+        duration: +(actualDur / 60).toFixed(2),
+        course:   currentSlot.task.course || undefined,
+        taskId:   String(currentSlot.task._id),
+      });
+      slotIdx++;
+      // Re-queue the unfinished portion if a fixed block trimmed this slot
+      if (actualDur < currentSlot.duration) {
+        studySlots.splice(slotIdx, 0, {
+          task:     currentSlot.task,
+          duration: currentSlot.duration - actualDur,
+        });
+      }
+    } else {
+      schedule.push({
+        time:     minutesToTime(cursor),
+        task:     'Free Study / Review',
+        type:     'study',
+        duration: +(actualDur / 60).toFixed(2),
+      });
+    }
+
+    cursor += actualDur;
+    sessionCount++;
+    if (cursor >= studyEnd) break;
+
+    // Recheck blocks after cursor advance
+    advanceBlocks();
+    const blockAfterStudy = blockIdx < fixedBlocks.length ? fixedBlocks[blockIdx] : null;
+
+    // Skip regular break if a fixed block starts here
+    if (blockAfterStudy && blockAfterStudy.start <= cursor) continue;
+
+    // Insert break (long every `longBreakAfter` sessions, else short)
+    const isLong       = sessionCount % longBreakAfter === 0;
+    const desiredBreak = isLong ? longBreakDuration : breakDuration;
+    const breakHorizon = blockAfterStudy ? Math.min(blockAfterStudy.start, studyEnd) : studyEnd;
+    const actualBreak  = Math.min(desiredBreak, breakHorizon - cursor);
+
+    if (actualBreak >= 3) {
+      schedule.push({
+        time:     minutesToTime(cursor),
+        task:     isLong ? 'Long Break' : 'Short Break',
+        type:     'break',
+        duration: +(actualBreak / 60).toFixed(2),
+      });
+      cursor += actualBreak;
+    }
+  }
+
+  // ── Ensure all fixed blocks are present in the final schedule ───────────────
+  fixedBlocks.forEach((block) => {
+    const blockTime = minutesToTime(block.start);
+    if (!schedule.some((s) => s.time === blockTime && s.type === block.type)) {
+      schedule.push({
+        time:     blockTime,
+        task:     block.name,
+        type:     block.type,
+        duration: +((block.end - block.start) / 60).toFixed(2),
+      });
+    }
+  });
+
+  schedule.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
   return schedule;
 };
 

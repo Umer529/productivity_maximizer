@@ -1,5 +1,11 @@
 import { api, setToken, clearToken } from '../lib/apiClient';
 
+export interface CustomBreak {
+  name: string;
+  startTime: string;
+  duration: number;
+}
+
 export interface UserPreferences {
   cgpaTarget: number;
   semester: number;
@@ -9,6 +15,7 @@ export interface UserPreferences {
   longBreakDuration: number;
   longBreakAfter: number;
   namazBreaksEnabled: boolean;
+  customBreaks?: CustomBreak[];
   sleepStart: string;
   sleepEnd: string;
   studyStartTime: string;
@@ -22,6 +29,7 @@ export interface AuthUser {
   streak: number;
   totalStudyMinutes: number;
   preferences: UserPreferences;
+  customBreaks?: CustomBreak[];
   // ML Feature Fields
   age?: number;
   gender?: string;

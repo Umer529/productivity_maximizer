@@ -118,6 +118,7 @@ exports.updateProfile = async (req, res, next) => {
       longBreakAfter,
       namazBreaksEnabled,
       selectedNamazPrayers,
+      customBreaks,
       sleepStart,
       sleepEnd,
       studyStartTime,
@@ -161,6 +162,7 @@ exports.updateProfile = async (req, res, next) => {
     if (longBreakAfter !== undefined) updateFields.longBreakAfter = longBreakAfter;
     if (namazBreaksEnabled !== undefined) updateFields.namazBreaksEnabled = namazBreaksEnabled;
     if (selectedNamazPrayers !== undefined) updateFields.selectedNamazPrayers = selectedNamazPrayers;
+    if (customBreaks !== undefined) updateFields.customBreaks = customBreaks;
     if (sleepStart !== undefined) updateFields.sleepStart = sleepStart;
     if (sleepEnd !== undefined) updateFields.sleepEnd = sleepEnd;
     if (studyStartTime !== undefined) updateFields.studyStartTime = studyStartTime;

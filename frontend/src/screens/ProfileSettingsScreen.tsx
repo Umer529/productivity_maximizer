@@ -16,6 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/apiClient';
+import { CustomBreak } from '../services/authService';
 import { colors, spacing, radius, typography, shadows } from '../lib/theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -63,6 +64,16 @@ export default function ProfileSettingsScreen() {
   const [studyStartTime, setStudyStartTime] = useState(user?.preferences?.studyStartTime || '09:00');
   const [studyEndTime, setStudyEndTime] = useState(user?.preferences?.studyEndTime || '18:00');
 
+  // Custom breaks
+  const [customBreaks, setCustomBreaks] = useState<CustomBreak[]>(
+    user?.customBreaks || user?.preferences?.customBreaks || []
+  );
+  const [addBreakVisible, setAddBreakVisible] = useState(false);
+  const [newBreakName, setNewBreakName] = useState('');
+  const [newBreakTime, setNewBreakTime] = useState('12:00');
+  const [newBreakDuration, setNewBreakDuration] = useState('15');
+  const [breakTimePickerVisible, setBreakTimePickerVisible] = useState(false);
+
   // Picker modals
   const [semesterPickerVisible, setSemesterPickerVisible] = useState(false);
   const [studyHoursPickerVisible, setStudyHoursPickerVisible] = useState(false);
@@ -100,6 +111,7 @@ export default function ProfileSettingsScreen() {
         focusDuration: parseInt(focusDuration),
         breakDuration: parseInt(breakDuration),
         namazBreaksEnabled,
+        customBreaks,
         sleepStart,
         sleepEnd,
         studyStartTime,
@@ -210,6 +222,43 @@ export default function ProfileSettingsScreen() {
           <SettingRow label="Study End">
             <PickerButton value={studyEndTime} onPress={() => setStudyEndPickerVisible(true)} />
           </SettingRow>
+        </View>
+
+        {/* ── Custom Breaks ── */}
+        <View style={styles.section}>
+          <View style={breakStyles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Custom Breaks</Text>
+              <Text style={[styles.sectionSub, { marginTop: 2 }]}>
+                Block time for meals, gym, meetings, etc.
+              </Text>
+            </View>
+            <TouchableOpacity style={breakStyles.addBtn} onPress={() => setAddBreakVisible(true)}>
+              <Ionicons name="add" size={15} color={colors.primary} />
+              <Text style={breakStyles.addBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+
+          {customBreaks.length === 0 ? (
+            <Text style={breakStyles.emptyText}>No custom breaks — tap Add to create one</Text>
+          ) : (
+            customBreaks.map((b, i) => (
+              <View key={i} style={breakStyles.breakRow}>
+                <View style={breakStyles.breakDot} />
+                <View style={breakStyles.breakInfo}>
+                  <Text style={breakStyles.breakName}>{b.name}</Text>
+                  <Text style={breakStyles.breakDetail}>{b.startTime} · {b.duration} min</Text>
+                </View>
+                <TouchableOpacity
+                  style={breakStyles.deleteBtn}
+                  onPress={() => setCustomBreaks((prev) => prev.filter((_, idx) => idx !== i))}
+                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.destructive} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </View>
 
         {/* ── ML Features ── */}
@@ -441,6 +490,95 @@ export default function ProfileSettingsScreen() {
         onSelect={setStudyEndTime}
         label="Study End"
       />
+
+      {/* Add Break Modal */}
+      <Modal
+        visible={addBreakVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddBreakVisible(false)}
+      >
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.container}>
+            <View style={modalStyles.header}>
+              <Text style={modalStyles.title}>Add Custom Break</Text>
+              <TouchableOpacity onPress={() => setAddBreakVisible(false)} style={modalStyles.closeBtn}>
+                <Ionicons name="close" size={24} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <View style={breakStyles.addForm}>
+              <View style={breakStyles.formField}>
+                <Text style={breakStyles.formLabel}>Break Name</Text>
+                <TextInput
+                  style={[styles.input, breakStyles.formInput]}
+                  value={newBreakName}
+                  onChangeText={setNewBreakName}
+                  placeholder="e.g. Lunch, Gym, Meeting"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <SettingRow label="Start Time">
+                <TouchableOpacity
+                  style={rowStyles.pickerBtn}
+                  onPress={() => {
+                    setAddBreakVisible(false);
+                    setBreakTimePickerVisible(true);
+                  }}
+                >
+                  <Text style={rowStyles.pickerBtnText}>{newBreakTime}</Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              </SettingRow>
+              <SettingRow label="Duration (min)">
+                <TextInput
+                  style={styles.input}
+                  value={newBreakDuration}
+                  onChangeText={setNewBreakDuration}
+                  keyboardType="number-pad"
+                />
+              </SettingRow>
+              <TouchableOpacity
+                style={[styles.saveBtn, !newBreakName.trim() && styles.saveBtnDisabled]}
+                disabled={!newBreakName.trim()}
+                onPress={() => {
+                  setCustomBreaks((prev) => [
+                    ...prev,
+                    {
+                      name: newBreakName.trim(),
+                      startTime: newBreakTime,
+                      duration: Math.max(5, parseInt(newBreakDuration) || 15),
+                    },
+                  ]);
+                  setNewBreakName('');
+                  setNewBreakTime('12:00');
+                  setNewBreakDuration('15');
+                  setAddBreakVisible(false);
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={20} color={colors.white} />
+                <Text style={styles.saveBtnText}>Add Break</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Break Time Picker */}
+      <PickerModal
+        visible={breakTimePickerVisible}
+        onClose={() => {
+          setBreakTimePickerVisible(false);
+          setAddBreakVisible(true);
+        }}
+        options={TIME_OPTIONS}
+        selectedValue={newBreakTime}
+        onSelect={(t: string) => {
+          setNewBreakTime(t);
+          setBreakTimePickerVisible(false);
+          setAddBreakVisible(true);
+        }}
+        label="Break Start Time"
+      />
     </SafeAreaView>
   );
 }
@@ -647,6 +785,57 @@ const rowStyles = StyleSheet.create({
     color: colors.foreground,
     fontWeight: '600',
   },
+});
+
+const breakStyles = StyleSheet.create({
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primaryDim,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 2,
+  },
+  addBtnText: { fontSize: typography.xs, color: colors.primary, fontWeight: '700' },
+  emptyText: { fontSize: typography.xs, color: colors.mutedForeground, fontStyle: 'italic' },
+  breakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  breakDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+    flexShrink: 0,
+  },
+  breakInfo: { flex: 1 },
+  breakName: { fontSize: typography.sm, fontWeight: '600', color: colors.foreground },
+  breakDetail: { fontSize: typography.xs, color: colors.mutedForeground, marginTop: 1 },
+  deleteBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addForm: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+    gap: spacing.lg,
+  },
+  formField: { gap: spacing.xs },
+  formLabel: { fontSize: typography.xs, color: colors.mutedForeground, fontWeight: '600' },
+  formInput: { textAlign: 'left', width: '100%' },
 });
 
 const modalStyles = StyleSheet.create({

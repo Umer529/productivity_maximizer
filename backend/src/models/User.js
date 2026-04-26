@@ -24,6 +24,7 @@ function rowToUser(row) {
     longBreakAfter:       row.long_break_after,
     namazBreaksEnabled:   row.namaz_breaks_enabled === 1,
     selectedNamazPrayers: JSON.parse(row.selected_namaz_prayers || '[]'),
+    customBreaks:         JSON.parse(row.custom_breaks || '[]'),
     sleepStart:           row.sleep_start,
     sleepEnd:             row.sleep_end,
     studyStartTime:       row.study_start_time,
@@ -42,6 +43,7 @@ function rowToUser(row) {
       longBreakAfter:      row.long_break_after,
       namazBreaksEnabled:  row.namaz_breaks_enabled === 1,
       selectedNamazPrayers: JSON.parse(row.selected_namaz_prayers || '[]'),
+      customBreaks:        JSON.parse(row.custom_breaks || '[]'),
       sleepStart:          row.sleep_start,
       sleepEnd:            row.sleep_end,
       studyStartTime:      row.study_start_time,
@@ -77,14 +79,14 @@ function rowToUser(row) {
 const User = {
   /** Find a user by id (password excluded by default) */
   findById(id, { includePassword = false } = {}) {
-    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,selected_namaz_prayers,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,age,gender,social_media_hours,netflix_hours,has_part_time_job,attendance_percentage,sleep_hours,diet_quality,exercise_frequency,parental_education_level,internet_quality,mental_health_rating,extra_curricular_participation,productivity_index,stress_factor,engagement_score,time_efficiency,life_balance_score,created_at,updated_at';
+    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,selected_namaz_prayers,custom_breaks,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,age,gender,social_media_hours,netflix_hours,has_part_time_job,attendance_percentage,sleep_hours,diet_quality,exercise_frequency,parental_education_level,internet_quality,mental_health_rating,extra_curricular_participation,productivity_index,stress_factor,engagement_score,time_efficiency,life_balance_score,created_at,updated_at';
     const row = db.prepare(`SELECT ${cols} FROM users WHERE id = ?`).get(Number(id));
     return rowToUser(row);
   },
 
   /** Find a user by arbitrary where object */
   findOne({ email, id } = {}, { includePassword = false } = {}) {
-    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,selected_namaz_prayers,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,age,gender,social_media_hours,netflix_hours,has_part_time_job,attendance_percentage,sleep_hours,diet_quality,exercise_frequency,parental_education_level,internet_quality,mental_health_rating,extra_curricular_participation,productivity_index,stress_factor,engagement_score,time_efficiency,life_balance_score,created_at,updated_at';
+    const cols = includePassword ? '*' : 'id,name,email,role,cgpa_target,semester,study_hours_per_day,focus_duration,break_duration,long_break_duration,long_break_after,namaz_breaks_enabled,selected_namaz_prayers,custom_breaks,sleep_start,sleep_end,study_start_time,study_end_time,streak,last_study_date,total_study_minutes,age,gender,social_media_hours,netflix_hours,has_part_time_job,attendance_percentage,sleep_hours,diet_quality,exercise_frequency,parental_education_level,internet_quality,mental_health_rating,extra_curricular_participation,productivity_index,stress_factor,engagement_score,time_efficiency,life_balance_score,created_at,updated_at';
     let row;
     if (email !== undefined) {
       row = db.prepare(`SELECT ${cols} FROM users WHERE email = ?`).get(String(email).toLowerCase());
@@ -119,6 +121,7 @@ const User = {
       longBreakAfter:     'long_break_after',
       namazBreaksEnabled:     'namaz_breaks_enabled',
       selectedNamazPrayers:   'selected_namaz_prayers',
+      customBreaks:           'custom_breaks',
       sleepStart:             'sleep_start',
       sleepEnd:           'sleep_end',
       studyStartTime:     'study_start_time',

@@ -97,9 +97,6 @@ function resolveBaseUrl(): string {
 
 let BASE_URL: string = resolveBaseUrl();
 
-if (__DEV__) {
-  console.log('[API Client] Resolved base URL:', BASE_URL, '| Platform:', Platform.OS);
-}
 
 // ============================================================================
 // TOKEN MANAGEMENT
@@ -261,7 +258,6 @@ export function getApiBaseUrl(): string {
 
 export function setApiBaseUrl(url: string): void {
   BASE_URL = url;
-  if (__DEV__) console.log('[API Client] Base URL overridden to:', BASE_URL);
 }
 
 /** Ping the health endpoint — useful for debugging connectivity. */

@@ -120,12 +120,14 @@ db.exec(`
   );
 `);
 
-// Add selected_namaz_prayers column if it doesn't exist (safe migration)
+// Safe column migrations
 try {
   db.exec(`ALTER TABLE users ADD COLUMN selected_namaz_prayers TEXT NOT NULL DEFAULT '[]'`);
-} catch {
-  // Column already exists — ignore
-}
+} catch { /* already exists */ }
+
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN custom_breaks TEXT NOT NULL DEFAULT '[]'`);
+} catch { /* already exists */ }
 
 console.log(`SQLite database ready at: ${DB_PATH}`);
 

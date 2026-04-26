@@ -92,8 +92,8 @@ export default function AppNavigator() {
       try {
         const status = await AsyncStorage.getItem('onboarding_done');
         setOnboardingDone(status === 'true');
-      } catch (err) {
-        console.log('[Navigation] Failed to load onboarding status:', err);
+      } catch {
+        // ignore — AsyncStorage unavailable, default to show onboarding
       } finally {
         setCheckingOnboarding(false);
       }
@@ -106,9 +106,8 @@ export default function AppNavigator() {
     try {
       await AsyncStorage.setItem('onboarding_done', 'true');
       setOnboardingDone(true);
-    } catch (err) {
-      console.error('[Navigation] Failed to save onboarding status:', err);
-      setOnboardingDone(true); // Continue anyway
+    } catch {
+      setOnboardingDone(true); // Continue even if storage fails
     }
   };
 

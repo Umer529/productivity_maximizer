@@ -9,7 +9,7 @@ const path = require('path');
 class MLScheduler {
   constructor() {
     this.pythonScript = path.join(__dirname, '../../python/predictor.py');
-    this.modelsDir = path.join(__dirname, '../../../artifacts');
+    this.modelsDir = path.join(__dirname, '../../../ml/models');
     this.cache = new Map();
     this.cacheTimeout = 300000; // 5 minutes
   }

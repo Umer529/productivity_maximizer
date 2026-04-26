@@ -214,9 +214,6 @@ export async function retryWithBackoff<T>(
       
       if (attempt < maxRetries - 1) {
         const delayMs = baseDelayMs * Math.pow(2, attempt);
-        console.log(
-          `[Retry] Attempt ${attempt + 1}/${maxRetries} failed. Retrying in ${delayMs}ms...`
-        );
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
